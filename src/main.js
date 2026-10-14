@@ -1896,9 +1896,32 @@ const CAR_SPECS = [
   { url: ASSETS.trafficCarModels[0], yaw: 0, length: 4.61,
     wheelRe: /^M_Wheel(F|B)(L|R)/i,
     corner: m => (m[1] + m[2]).toUpperCase(), front: k => k[0] === 'F',
-    paint: /paintjob/i },
+    paint: /paintjob/i,
+    // The Mustang OBJ ships one flat gray for every part — re-dress
+    // materials by name so chrome, glass, tires and lamps read apart.
+    fixup: [
+      [/chrome|rim|grill|exhaust|mirror/i,
+       { metalness: 0.95, roughness: 0.18, color: 0xdfe2e6 }],
+      [/tire|brakepad|blacktrim|_dark/i,
+       { roughness: 0.92, color: 0x141518 }],
+      [/windshield|glass/i,
+       { metalness: 0.4, roughness: 0.08, color: 0x101c24,
+         transparent: true, opacity: 0.55 }],
+      [/headlight|turnsignal/i,
+       { roughness: 0.25, color: 0xf0ead0, emissive: 0x35301e }],
+      [/tailight|taillight/i,
+       { roughness: 0.3, color: 0x7d1a12, emissive: 0x2a0805 }]
+    ] },
   { url: ASSETS.trafficCarModels[1], yaw: 0, length: 4.06,
-    wheelRe: null, paint: 'largest' }
+    wheelRe: null, paint: 'largest',
+    // Beetle VRay mats are all pure black; lambert6SG (the only gray
+    // one) is the brightwork/interior set — give it a chrome finish.
+    fixup: [
+      [/lambert6sg/i,
+       { metalness: 0.9, roughness: 0.28, color: 0xc9ccd2 }],
+      [/vray|initialshading/i,
+       { roughness: 0.5, metalness: 0.35, color: 0x2a2d33 }]
+    ] }
 ];
 
 // Tint the material covering the most triangles — for merged-mesh
@@ -1947,6 +1970,30 @@ async function loadCars() {
     const s = spec.length / size.z;
     inner.scale.setScalar(s);
     inner.position.set(-center.x * s, -bounds.min.y * s, -center.z * s);
+    // Per-model material fixes — converted OBJ/FBX assets often ship
+    // one flat gray (Mustang) or pure black (Beetle) for every part.
+    if (spec.fixup) {
+      template.traverse(object => {
+        if (!object.isMesh) return;
+        const mats = Array.isArray(object.material)
+          ? object.material : [object.material];
+        for (const m of mats) {
+          for (const [re, props] of spec.fixup) {
+            if (!re.test(m.name)) continue;
+            if (props.color !== undefined) m.color.set(props.color);
+            if (props.emissive !== undefined && m.emissive)
+              m.emissive.set(props.emissive);
+            if (props.metalness !== undefined) m.metalness = props.metalness;
+            if (props.roughness !== undefined) m.roughness = props.roughness;
+            if (props.opacity !== undefined) {
+              m.transparent = true;
+              m.opacity = props.opacity;
+              m.depthWrite = false;
+            }
+          }
+        }
+      });
+    }
     // Clones share materials, so resolve 'largest' once on the
     // template — the same instance shows up inside every wrapper.
     templates.push({ spec, template,
@@ -1959,12 +2006,14 @@ async function loadCars() {
   const paintColor = () => {
     const c = new THREE.Color();
     if (paintRand() < 0.4) {
-      // Showroom neutrals: near-black, silver, gray, off-white.
+      // Showroom neutrals: black, silver, gray, off-white.
       c.setHSL(0.58, 0.03,
-               [0.07, 0.3, 0.52, 0.82][Math.floor(paintRand() * 4)]);
+               [0.1, 0.35, 0.55, 0.85][Math.floor(paintRand() * 4)]);
     } else {
-      c.setHSL(paintRand(), 0.5 + paintRand() * 0.3,
-               0.25 + paintRand() * 0.3);
+      // Painted colors stay fairly bright — the tint multiplies an
+      // already-dark basecolor texture on textured models.
+      c.setHSL(paintRand(), 0.55 + paintRand() * 0.35,
+               0.42 + paintRand() * 0.3);
     }
     return c;
   };
@@ -1985,6 +2034,11 @@ async function loadCars() {
         const tinted = mats.map(m => {
           const c = m.clone();
           c.color = tint.clone ? tint.clone() : new THREE.Color(tint);
+          // Automotive clearcoat look — glossy paint picks up the
+          // environment instead of reading matte.
+          if (c.metalness !== undefined) c.metalness = 0.45;
+          if (c.roughness !== undefined) c.roughness = 0.32;
+          if (c.envMapIntensity !== undefined) c.envMapIntensity = 1.15;
           return c;
         });
         object.material = Array.isArray(object.material)
@@ -2042,7 +2096,9 @@ async function loadCars() {
   let i = 0;
   for (const t of traffic) mount(t.car, paintColor(), pick(paintRand()));
   for (const r of rivals) mount(r.car, paintColor(), pick(paintRand()));
-  mount(player, new THREE.Color(0x234d37), 0);
+  // Near-white tint keeps the DB4's baked Aston-green livery visible;
+  // a colored multiply would darken the texture toward black.
+  mount(player, new THREE.Color(0xf0f3ec), 0);
   toast('SCANNED CARS IN TRAFFIC', 2200);
 }
 let firstChunk = 0;
