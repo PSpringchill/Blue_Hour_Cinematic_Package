@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>ASTON MARTIN · DB4 GT ZAGATO — Driver's Seat</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<style>
+:root { color-scheme: dark; --ink:#f7f4ec; --muted: #b2bbb8; --green:#b5d1a5; --brd:rgba(226,240,228,.15); }
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#10191c;font-family:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--ink);-webkit-tap-highlight-color:transparent}
+#view{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.vignette{position:fixed;inset:0;pointer-events:none;background:linear-gradient(to bottom,rgba(2,15,19,.16),transparent 29%,transparent 64%,rgba(4,9,10,.22) 100%)}
+.brand{position:absolute;left:clamp(18px,3vw,48px);top:clamp(19px,3.2vw,46px);display:flex;gap:15px;align-items:center;text-shadow:0 2px 18px #0006;pointer-events:none}
+.monogram{font-family:Georgia,'Times New Roman',serif;font-size:38px;letter-spacing:-6px;font-weight:400;border-right:1px solid #ffffff60;padding-right:21px;line-height:1}
+.eyebrow{color:#d1e1d4;font-size:10px;text-transform:uppercase;letter-spacing:.34em;font-weight:750}
+.brand strong{display:block;font-family:Georgia,serif;font-size:21px;font-weight:400;letter-spacing:.06em;margin-top:5px}
+.top-right{position:absolute;right:clamp(16px,3vw,45px);top:clamp(22px,3.5vw,51px);display:flex;gap:8px;align-items:center}
+button{font:inherit;cursor:pointer;touch-action:none;color:var(--ink)}
+.icon-button{border:1px solid var(--brd);border-radius:12px;background:rgba(13,25,27,.57);backdrop-filter:blur(18px);padding:11px 14px;font-size:11px;letter-spacing:.08em;transition:.2s}
+.icon-button:hover,.icon-button:focus-visible{border-color:#d2e3ca88;background:rgba(29,57,53,.76);outline:none}
+.icon-button.active{color:#d7f2bf;border-color:#b0ca9966}
+.hud{position:absolute;left:clamp(18px,3vw,48px);bottom:clamp(20px,3vw,47px);display:flex;gap:22px;align-items:flex-end;pointer-events:none;text-shadow:0 2px 12px #0008}
+.speed-stack .eyebrow{letter-spacing:.19em;font-size:10px}
+.speed-line{display:flex;align-items:baseline;gap:10px;margin-top:3px}
+#speed{font-weight:350;font-size:clamp(50px,7.7vw,102px);letter-spacing:-.09em;line-height:.99;font-variant-numeric:tabular-nums}
+.speed-unit{font-size:13px;font-weight:700;letter-spacing:.16em;color:#d3e4d1}
+.hud-separator{width:1px;height:63px;background:rgba(239,253,244,.24);margin-bottom:6px}
+.stats{display:grid;gap:11px;margin-bottom:7px}
+.stats-item{min-width:80px}.stats-item .k{display:block;font-size:9px;color:#c3d4cb;letter-spacing:.20em;font-weight:650}.stats-item .v{display:block;font-size:16px;font-variant-numeric:tabular-nums;margin-top:2px;letter-spacing:.07em}
+.mode{text-transform:uppercase;position:absolute;bottom:clamp(20px,3vw,46px);right:clamp(16px,3vw,45px);font-size:10px;letter-spacing:.17em;text-align:right;text-shadow:0 2px 12px #0009;pointer-events:none}
+.mode .eyebrow{display:block;margin-top:5px;letter-spacing:.22em;line-height:1.7}
+#turnL,#turnR{font-size:15px;opacity:.35;display:inline-block;transition:.15s}.signal-active{color:#ffd684!important;opacity:1!important;text-shadow:0 0 18px #ffbb22!important}
+.help{position:absolute;top:103px;left:clamp(18px,3vw,48px);max-width:330px;font-size:11px;letter-spacing:.04em;color:#d9e3da;line-height:1.8;text-shadow:0 2px 8px #000a;opacity:.88;transition:opacity .4s}
+.help strong{color:white}.help kbd{font-size:10px;border:1px solid #eef7e155;background:#17282485;border-radius:4px;padding:2px 5px;margin-right:2px}
+#centerToast{position:fixed;top:24%;left:50%;transform:translateX(-50%);background:#152421c9;border:1px solid #d1e4ce50;padding:11px 19px;font-size:13px;letter-spacing:.08em;border-radius:8px;pointer-events:none;opacity:0;transition:.24s;white-space:nowrap}
+.loading{position:fixed;inset:0;display:grid;place-items:center;z-index:30;background:radial-gradient(ellipse at 55% 30%,#31493f 0%,#17292b 55%,#0b151c 100%);transition:opacity .7s}
+.loading.hidden{opacity:0;pointer-events:none}.loading-inner{text-align:center}.loading .tag{font-family:Georgia,serif;font-size:clamp(23px,4vw,51px);letter-spacing:.15em;font-weight:400}.loading small{display:block;color:#b1cab5;letter-spacing:.25em;font-size:10px;margin-top:17px}.progress{width:180px;height:1px;background:#ffffff35;margin:27px auto 0;position:relative;overflow:hidden}.progress:after{content:'';height:100%;position:absolute;left:-55%;width:55%;background:#cee1c6;animation:loadbar 1.25s infinite}@keyframes loadbar{to{left:100%}}
+.error{color:#f6c2a8;display:none;font-size:12px;max-width:360px;letter-spacing:0;line-height:1.65;margin:20px auto}
+.touch{display:none;position:absolute;bottom:124px;left:16px;right:16px;justify-content:space-between;pointer-events:none}
+.touch-cluster{display:flex;gap:11px}.touch button{pointer-events:auto;width:64px;height:64px;border-radius:50%;background:#1221268f;border:1px solid #ffffff50;backdrop-filter:blur(10px);font-size:18px;user-select:none}.touch button.pressed{background:#b7d5ad66;border-color:white}
+@media(max-width:800px){.brand{top:15px;left:17px}.monogram{font-size:28px}.brand strong{font-size:15px}.top-right{top:13px;right:14px}.icon-button{padding:9px 10px;font-size:10px}.help{top:77px;left:17px;max-width:230px;font-size:10px}.touch{display:flex}.hud{bottom:14px;left:16px;gap:13px}.hud-separator{height:45px}.stats{gap:4px}#speed{font-size:54px}.mode{bottom:18px;right:15px;font-size:9px}.mode .eyebrow{font-size:8px}.touch button{width:58px;height:58px}}
+@media (max-height:550px){.help{display:none}.touch{bottom:78px}.touch button{width:46px;height:46px}}
+</style>
+<script type="importmap">
+{"imports":{
+"three":"https://cdn.jsdelivr.net/npm/three@0.176.0/build/three.module.js",
+"three/addons/":"https://cdn.jsdelivr.net/npm/three@0.176.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<canvas id="view" aria-label="Interactive first-person driving view"></canvas>
+<div class="vignette"></div>
+<div class="brand"><span class="monogram">AM</span><div><div class="eyebrow">THE DRIVER'S EXPERIENCE</div><strong>DB4 GT ZAGATO</strong></div></div>
+<div class="top-right"><button class="icon-button active" id="cameraBtn" title="Change camera (C)">◉ COCKPIT</button><button class="icon-button" id="soundBtn" title="Toggle engine sound">♫ SOUND OFF</button><button class="icon-button" id="resetBtn" title="Reset vehicle (R)">↺ RESET</button></div>
+<div class="help" id="help"><strong>DRIVE THE CLASSIC</strong><div><kbd>W</kbd>/<kbd>↑</kbd> accelerate &nbsp; <kbd>S</kbd>/<kbd>↓</kbd> brake / reverse</div><div><kbd>A</kbd>/<kbd>←</kbd> steer left &nbsp; <kbd>D</kbd>/<kbd>→</kbd> steer right</div><div><kbd>C</kbd> switch view &nbsp; <kbd>Q</kbd>/<kbd>E</kbd> indicators &nbsp; <kbd>R</kbd> reset</div></div>
+<div class="hud"><div class="speed-stack"><div class="eyebrow">CURRENT VELOCITY</div><div class="speed-line"><span id="speed">0</span><span class="speed-unit">KM/H</span></div></div><div class="hud-separator"></div><div class="stats"><div class="stats-item"><span class="k">ENGINE SPEED</span><span class="v" id="rpm">850 RPM</span></div><div class="stats-item"><span class="k">GEAR / STEER</span><span class="v"><span id="gear">N</span>&nbsp; · &nbsp;<span id="angle">0°</span></span></div></div></div>
+<div class="mode"><div><span id="turnL">◀</span> &nbsp; <span id="viewName">DRIVER'S SEAT</span> &nbsp; <span id="turnR">▶</span></div><span class="eyebrow">1961 • BRITISH GRAND TOURING<br>INTERACTIVE 3D SIMULATION</span></div>
+<div class="touch"><div class="touch-cluster"><button data-key="left" aria-label="Steer left">◀</button><button data-key="right" aria-label="Steer right">▶</button></div><div class="touch-cluster"><button data-key="brake" aria-label="Brake">▾</button><button data-key="gas" aria-label="Accelerate">▴</button></div></div>
+<div id="centerToast"></div>
+<div class="loading" id="loading"><div class="loading-inner"><div class="tag">ASTON MARTIN</div><small>PREPARING YOUR DRIVER'S SEAT</small><div class="progress"></div><div class="error" id="error"></div></div></div>
+<script>
+// Provide an actionable error instead of leaving a perpetual loading screen
+// when an external Three.js module is blocked by a firewall or offline mode.
+window.addEventListener('error', (e) => {
+  if (e.target?.tagName === 'SCRIPT' || /Failed to fetch dynamically imported module|module script|three\.module/i.test(String(e.message))) {
+    const el=document.getElementById('error');
+    el.style.display='block';
+    el.textContent='3D libraries could not load. Connect to the internet, then refresh; the project uses Three.js from jsDelivr.';
+  }
+},true);
+setTimeout(()=>{
+  const load=document.getElementById('loading');
+  if(!load.classList.contains('hidden')){
+    const el=document.getElementById('error'); el.style.display='block';
+    el.textContent='Still loading the 3D engine. Verify internet access and the local server is running at http://localhost:8000.';
+  }
+},18000);
+</script>
+<script type="module" src="./src/main.js"></script>
+</body></html>

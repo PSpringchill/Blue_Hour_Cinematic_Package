@@ -1880,34 +1880,80 @@ async function loadNature() {
   }
 }
 
-// Scanned Aston DB4 (cars/aston_db4.glb) dresses each ambient
-// traffic car: a cloned wrapper per car with a random paint tint on
-// the body material, and the four wheel meshes re-pivoted to the
-// same steer/spin contract the procedural rig uses. A missing file
-// keeps the procedural traffic bodies.
-async function loadCars() {
-  let gltf;
-  try {
-    gltf = await queuedJob('cars:aston_db4', 5,
-      () => makeGLTFLoader().loadAsync(ASSETS.playerAndTrafficCar));
-  } catch (error) { return; }
+// Scanned car models dress the traffic, rivals and the player.
+// Each spec normalizes a GLB into makeCar's convention (+Z nose,
+// ground at y=0, real-world length), finds wheel corner groups and
+// re-pivots them into the steer/spin contract, and picks which
+// material(s) receive the random paint tint.
+// Missing files skip silently — procedural bodies remain.
+// spec.yaw flips nose-vs-tail (0 or PI) after the loader puts the
+// long axis on Z with +X->+Z convention (-PI/2 when model runs on X).
+const CAR_SPECS = [
+  { url: ASSETS.playerAndTrafficCar, yaw: 0, length: 4.55,
+    wheelRe: /^(fl|fr|rl|rr)[_ ]?wheel$/i,
+    corner: m => m[1].toUpperCase(), front: k => k[0] === 'F',
+    paint: /body/i },
+  { url: ASSETS.trafficCarModels[0], yaw: 0, length: 4.61,
+    wheelRe: /^M_Wheel(F|B)(L|R)/i,
+    corner: m => (m[1] + m[2]).toUpperCase(), front: k => k[0] === 'F',
+    paint: /paintjob/i },
+  { url: ASSETS.trafficCarModels[1], yaw: 0, length: 4.06,
+    wheelRe: null, paint: 'largest' }
+];
 
-  // The GLB drives along +X; wrap it so +Z is the nose (makeCar's
-  // convention), then normalize to a real 4.55 m footprint.
-  const template = new THREE.Group();
-  const inner = new THREE.Group();
-  inner.rotation.y = -Math.PI / 2;
-  inner.add(gltf.scene);
-  template.add(inner);
-  template.updateMatrixWorld(true);
-  const bounds = new THREE.Box3().setFromObject(template);
-  const size = bounds.getSize(new THREE.Vector3());
-  if (!Number.isFinite(size.z) || size.z < 0.001) return;
-  const center = bounds.getCenter(new THREE.Vector3());
-  const s = 4.55 / size.z;
-  inner.scale.setScalar(s);
-  inner.position.set(-center.x * s, -bounds.min.y * s,
-                     -center.z * s);
+// Tint the material covering the most triangles — for merged-mesh
+// models with opaque names (the Beetle's VRayMtl*SG set), the body
+// shell is by far the biggest primitive.
+function largestPaintMaterial(root) {
+  const tris = new Map();
+  root.traverse(object => {
+    if (!object.isMesh) return;
+    const n = object.geometry.index ? object.geometry.index.count
+                                    : object.geometry.attributes.position.count;
+    const mats = Array.isArray(object.material)
+      ? object.material : [object.material];
+    for (const m of mats) tris.set(m, (tris.get(m) || 0) + n);
+  });
+  let best = null, bestN = 0;
+  for (const [m, n] of tris) if (n > bestN) { best = m; bestN = n; }
+  return best;
+}
+
+async function loadCars() {
+  // Load every spec that exists; missing files drop out of the pool.
+  const templates = [];
+  for (let i = 0; i < CAR_SPECS.length; i++) {
+    const spec = CAR_SPECS[i];
+    let gltf;
+    try {
+      gltf = await queuedJob(`cars:${i}`, 5,
+        () => makeGLTFLoader().loadAsync(spec.url));
+    } catch (error) { continue; }
+    const template = new THREE.Group();
+    const inner = new THREE.Group();
+    inner.add(gltf.scene);
+    template.add(inner);
+    template.updateMatrixWorld(true);
+    let bounds = new THREE.Box3().setFromObject(template);
+    let size = bounds.getSize(new THREE.Vector3());
+    // Put the long axis on Z (car forward) with +X -> +Z handedness.
+    // spec.yaw (0 or PI) then only chooses nose-vs-tail.
+    inner.rotation.y = (size.x > size.z ? -Math.PI / 2 : 0) + spec.yaw;
+    template.updateMatrixWorld(true);
+    bounds = new THREE.Box3().setFromObject(template);
+    size = bounds.getSize(new THREE.Vector3());
+    if (!Number.isFinite(size.z) || size.z < 0.001) continue;
+    const center = bounds.getCenter(new THREE.Vector3());
+    const s = spec.length / size.z;
+    inner.scale.setScalar(s);
+    inner.position.set(-center.x * s, -bounds.min.y * s, -center.z * s);
+    // Clones share materials, so resolve 'largest' once on the
+    // template — the same instance shows up inside every wrapper.
+    templates.push({ spec, template,
+      paintTarget: spec.paint === 'largest'
+        ? largestPaintMaterial(template) : null });
+  }
+  if (!templates.length) return;
 
   const paintRand = randomGenerator(614);
   const paintColor = () => {
@@ -1918,45 +1964,71 @@ async function loadCars() {
                [0.07, 0.3, 0.52, 0.82][Math.floor(paintRand() * 4)]);
     } else {
       c.setHSL(paintRand(), 0.5 + paintRand() * 0.3,
-               0.2 + paintRand() * 0.3);
+               0.25 + paintRand() * 0.3);
     }
     return c;
   };
-  const wheelRe = /^(fl|fr|rl|rr)[_ ]?wheel$/i;
 
-  function mount(car, tint) {
+  function mount(car, tint, templateIndex) {
+    const { spec, template, paintTarget } = templates[templateIndex];
     const wrapper = template.clone(true);
     wrapper.userData.shared = true;   // geometry shared across clones
-    const wheelNodes = [];
+    const corners = new Map();  // corner key -> {nodes:[], front}
     wrapper.traverse(object => {
       if (!object.isMesh) return;
       const mats = Array.isArray(object.material)
         ? object.material : [object.material];
-      if (mats.some(m => /body/i.test(m.name))) {
+      const isPaint = paintTarget
+        ? mats.includes(paintTarget)
+        : mats.some(m => spec.paint.test(m.name));
+      if (isPaint) {
         const tinted = mats.map(m => {
-          if (!/body/i.test(m.name)) return m;
           const c = m.clone();
           c.color = tint.clone ? tint.clone() : new THREE.Color(tint);
           return c;
         });
         object.material = Array.isArray(object.material)
           ? tinted : tinted[0];
+      } else if (paintTarget) {
+        // Untextured models (Beetle OBJ) ship every material at pure
+        // black — lift non-body parts to readable dark tones so trim,
+        // glass and tires shade instead of rendering as a void.
+        const lifted = mats.map(m => {
+          if (m.color && m.color.getHex() !== 0) return m;
+          const c = m.clone();
+          c.color = new THREE.Color(0x16181d);   // rubber/trim dark
+          return c;
+        });
+        if (lifted.some((m, k) => m !== mats[k]))
+          object.material = Array.isArray(object.material)
+            ? lifted : lifted[0];
       }
       object.castShadow = object.receiveShadow = true;
-      const match = wheelRe.exec(object.name);
-      if (match) wheelNodes.push({ node: object, front: /^f/i.test(match[1]) });
+      if (spec.wheelRe) {
+        const match = spec.wheelRe.exec(object.name);
+        if (match) {
+          const key = spec.corner(match);
+          if (!corners.has(key))
+            corners.set(key, { nodes: [], front: spec.front(key) });
+          corners.get(key).nodes.push(object);
+        }
+      }
     });
     car.root.add(wrapper);
     wrapper.updateMatrixWorld(true);
-    for (const wheel of wheelNodes) {
+    for (const wheel of corners.values()) {
+      // Pivot at the corner group's centroid; all its meshes spin.
+      const c = new THREE.Vector3();
+      for (const node of wheel.nodes)
+        c.add(node.getWorldPosition(new THREE.Vector3()));
+      c.divideScalar(wheel.nodes.length);
       const pivot = new THREE.Group();
-      pivot.position.copy(wrapper.worldToLocal(
-        wheel.node.getWorldPosition(new THREE.Vector3())));
+      pivot.position.copy(wrapper.worldToLocal(c));
       const spin = new THREE.Group();
       pivot.add(spin);
       wrapper.add(pivot);
       wrapper.updateMatrixWorld(true);
-      spin.attach(wheel.node);
+      for (const node of wheel.nodes) spin.attach(node);
       car.wheels.push({ pivot, spin, front: wheel.front });
     }
     car.visual.visible = false;
@@ -1964,9 +2036,13 @@ async function loadCars() {
     if (car === player && cockpitMode) wrapper.visible = false;
   }
 
-  for (const t of traffic) mount(t.car, paintColor());
-  // The player drives the same scanned DB4, in Aston racing green.
-  mount(player, new THREE.Color(0x234d37));
+  // The player keeps the DB4 in Aston racing green; traffic and
+  // rivals draw a random model + paint each.
+  const pick = rand => Math.floor(rand * templates.length);
+  let i = 0;
+  for (const t of traffic) mount(t.car, paintColor(), pick(paintRand()));
+  for (const r of rivals) mount(r.car, paintColor(), pick(paintRand()));
+  mount(player, new THREE.Color(0x234d37), 0);
   toast('SCANNED CARS IN TRAFFIC', 2200);
 }
 let firstChunk = 0;
@@ -2881,15 +2957,15 @@ const traffic = [];
   const trafficRand = randomGenerator(90210);
   const paints = [0x8a9099, 0x555c66, 0x74513a,
                   0x3c4652, 0x66505f, 0x5f6b5a];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 14; i++) {
     const dir = i % 3 === 2 ? -1 : 1;
     // dir * driveSide: same-way cars keep to the regulated side,
     // oncoming cars take the opposite lane (their own side).
     const lane = dir * CFG.driveSide * (2.4 + trafficRand() * 1.4);
     traffic.push({
       car: makeCar(paints[i % paints.length]),
-      s: dir > 0 ? 140 + trafficRand() * 680
-                 : 380 + trafficRand() * 720,
+      s: dir > 0 ? 140 + trafficRand() * 1200
+                 : 380 + trafficRand() * 1100,
       x: lane, lane, dir, speed: 0,
       cruise: dir > 0 ? 16 + trafficRand() * 11
                       : 24 + trafficRand() * 9,

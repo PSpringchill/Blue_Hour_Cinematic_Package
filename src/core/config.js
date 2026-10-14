@@ -81,6 +81,9 @@ export const WEATHER = {
 // Asset entry points — everything optional; missing files fall back.
 export const ASSETS = {
   playerAndTrafficCar: 'cars/aston_db4.glb',
+  // Extra traffic-car models, loaded in order; missing files skip
+  // silently. Player and rivals always use the first entry.
+  trafficCarModels: ['cars/mustang.glb', 'cars/beetle.glb'],
   treeSpecies: [
     'trees/spruce.glb', 'trees/pine.glb',
     'trees/fir.glb', 'trees/birch.glb'
