@@ -67,6 +67,12 @@ A visual upgrade of the original `Html.html` Three.js driving demo. The playable
 - Cockpit view (C cycles chase → cockpit → orbit): purpose-built DB4 interior — wood dashboard, analogue gauges with live speed/RPM needles, steering wheel that turns with input, rear-view mirror, A-pillars, windscreen and hood; the exterior shell hides while inside
 - World-region streaming: eight recycled 256 m tiles flank the route out to ±320 m with mountain relief, biome tints, and sprite-forest impostors; disk-backed `regions/region_XXXX.json` descriptors (seed, biome, 17×17 elevation grid) with fetch cancellation, cache, validation, and procedural fallback; three terrain LODs by distance
 
+## Project layout
+
+`index.html` is markup + CSS + importmap only. Engine code lives in
+`src/` — see [TEMPLATE.md](TEMPLATE.md) for the map/game-generation
+workflow (config-driven route, swappable assets, installers).
+
 ## PBR textures
 
 Real-world scanned materials live in `assets/` (CC0, [Poly Haven](https://polyhaven.com) plus user-supplied scans):
