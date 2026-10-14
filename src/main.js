@@ -2029,7 +2029,7 @@ async function loadCars() {
       wrapper.add(pivot);
       wrapper.updateMatrixWorld(true);
       for (const node of wheel.nodes) spin.attach(node);
-      car.wheels.push({ pivot, spin, front: wheel.front });
+      car.wheels.push({ pivot, spin, front: wheel.front, mounted: true });
     }
     car.visual.visible = false;
     car.imported = wrapper;
@@ -3995,13 +3995,15 @@ function updateCamera(dt, snap = false) {
     // (GLB axes — +X is the nose). Idle vibration, steering glance
     // and a widening FOV come from the reference demo.
     const vibration = Math.min(Math.abs(state.speed) / 35, 1) * 0.004;
+    cockpit.position.y = Math.sin(state.elapsed * 18.4) * vibration;
     cameraMount.position.y =
-      1.065 + Math.sin(state.elapsed * 18.4) * vibration;
+      1.065 + Math.sin(state.elapsed * 12) * vibration;
     cameraMount.rotation.y = damp(
       cameraMount.rotation.y, state.steer * 0.36, 3.6, dt);
     cameraMount.rotation.z = damp(
       cameraMount.rotation.z,
-      -state.steer * clamp(Math.abs(state.speed) / 60, 0, 0.028),
+      -state.steer / 0.44 *
+        clamp(Math.abs(state.speed) / 60, 0, 0.028),
       3, dt);
     steeringColumn.rotation.x = damp(
       steeringColumn.rotation.x,
@@ -4010,12 +4012,16 @@ function updateCamera(dt, snap = false) {
       const revving = pressed('KeyW', 'ArrowUp') ||
         (autopilotOn && state.acceleration > 0.4);
       const rpm = clamp(
-        0.85 + Math.abs(state.speed) * 0.026 + (revving ? 0.85 : 0),
+        0.85 + Math.abs(state.speed) * 0.072 + (revving ? 0.85 : 0),
         0.85, 6.5);
-      cockpitDials[0].draw(Math.abs(state.speed));   // speed is km/h
+      cockpitDials[0].draw(Math.abs(state.speed) * 3.6);  // m/s -> km/h
       cockpitDials[0].update();
       cockpitDials[1].draw(rpm);
       cockpitDials[1].update();
+      cockpitDials[2].draw(72);                 // fuel ~3/4 tank
+      cockpitDials[2].update();
+      cockpitDials[3].draw(48 + Math.min(35, Math.abs(state.speed)));
+      cockpitDials[3].update();
       lastGaugeTime = state.elapsed;
     }
     player.root.updateMatrixWorld(true);
@@ -4323,6 +4329,9 @@ $('model-file').addEventListener('change', async event => {
       if (!player.imported.userData.shared) disposeImported(player.imported);
     }
 
+    // Drop wheel pivots left behind by the fleet-mount loader — their
+    // groups are detached with the wrapper and would update forever.
+    player.wheels = player.wheels.filter(w => !w.mounted);
     player.imported = wrapper;
     player.importedWheels = importedWheels;
     player.visual.visible = false;
