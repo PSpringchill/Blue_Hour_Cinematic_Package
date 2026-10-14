@@ -6,7 +6,7 @@
   const YT_ERRORS = {2:'Invalid video ID',5:'This video cannot play in the embedded browser',100:'This video is unavailable',101:'Embedding disabled for this video',150:'Embedding disabled for this video',153:'YouTube requires an HTTP Referer; serve the page through http://127.0.0.1:8766/'};
   const s = {
     player: null, ready: false, apiReady: false, mode: 'videos', queue: [], index: 0,
-    playlistId: '', shuffle: false, repeat: 0, playing: false, volume: 70, queueOpen: false,
+    playlistId: '', playlistTitle: '', shuffle: false, repeat: 0, playing: false, volume: 70, queueOpen: false,
     currentVideoId: '', startedAtLeastOnce: false, lastKnownTitle: '', lastError: ''
   };
 
@@ -49,7 +49,7 @@
   function persist() {
     const data = {
       queue:s.mode === 'videos' ? s.queue.slice(0,150) : [], mode:s.mode,
-      playlistId:s.playlistId,index:s.index,volume:s.volume,repeat:s.repeat,shuffle:s.shuffle
+      playlistId:s.playlistId,playlistTitle:s.playlistTitle,index:s.index,volume:s.volume,repeat:s.repeat,shuffle:s.shuffle
     };
     safe(() => localStorage.setItem(KEY, JSON.stringify(data)));
   }
@@ -58,6 +58,7 @@
     if (!data || typeof data !== 'object') return;
     s.mode = data.mode === 'playlist' ? 'playlist' : 'videos';
     s.playlistId = isPlaylistId(data.playlistId) ? data.playlistId : '';
+    s.playlistTitle = String(data.playlistTitle || '').slice(0, 130);
     s.queue = Array.isArray(data.queue) ? data.queue.filter(q => isVideoId(q?.id)).slice(0,150).map(q => ({id:q.id,title:String(q.title||'').slice(0,130)})) : [];
     s.index = Math.max(0, Math.min(Number(data.index)||0, s.queue.length-1));
     s.volume = Math.max(0,Math.min(100,Number(data.volume)||70));
@@ -66,6 +67,37 @@
     if (s.mode === 'playlist' && !s.playlistId) s.mode = 'videos';
   }
   function getVideoData() { return safe(() => s.player?.getVideoData(), {}); }
+
+  // Title lookup without an API key: noembed.com mirrors YouTube's
+  // oEmbed data and sends a permissive CORS header (youtube.com/oembed
+  // itself sends none, so browsers block it). The plain oEmbed call is
+  // kept as a fallback for embedded browsers with relaxed CORS.
+  function fetchRemoteTitle(url) {
+    const extract = d => (d && typeof d.title === 'string') ? d.title.slice(0, 130) : null;
+    return fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`)
+      .then(r => r.ok ? r.json() : null).then(extract)
+      .catch(() => null)
+      .then(title => title ||
+        fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`)
+          .then(r => r.ok ? r.json() : null).then(extract).catch(() => null));
+  }
+  function fetchVideoTitle(track) {
+    fetchRemoteTitle(`https://www.youtube.com/watch?v=${track.id}`)
+      .then(t => {
+        if (!t || track.title === t) return;
+        track.title = t;
+        updateQueue(); updateHeader();
+        if (s.mode === 'videos') persist();
+      });
+  }
+  function fetchPlaylistTitle(id) {
+    fetchRemoteTitle(`https://www.youtube.com/playlist?list=${id}`)
+      .then(t => {
+        if (!t) return;
+        s.playlistTitle = t;
+        updateHeader(); updateQueue(); persist();
+      });
+  }
   function activeId() {
     const active = getVideoData()?.video_id;
     return isVideoId(active) ? active : (currentTrack()?.id || '');
@@ -73,9 +105,13 @@
   function updateHeader() {
     const track = currentTrack(), data = getVideoData();
     const id = activeId();
-    const name = data?.title || track?.title || (s.mode === 'playlist' && s.playlistId ? 'YouTube Playlist' : 'Roadtrip Radio');
+    const name = data?.title || track?.title || s.playlistTitle ||
+      (s.mode === 'playlist' && s.playlistId ? 'YouTube Playlist' : 'Roadtrip Radio');
     $('nowTitle').textContent = name;
-    $('nowSubtitle').textContent = (s.mode === 'playlist' ? 'YouTube playlist' : track ? `Track ${s.index + 1} of ${s.queue.length}` : 'Paste a YouTube link to begin');
+    $('nowSubtitle').textContent = (s.mode === 'playlist'
+      ? (s.playlistTitle || 'YouTube playlist') +
+        (s.queue.length ? ` · track ${s.index + 1} of ${s.queue.length}` : '')
+      : track ? `Track ${s.index + 1} of ${s.queue.length}` : 'Paste a YouTube link to begin');
     $('playStateLabel').textContent = s.playing ? 'NOW PLAYING' : (id || s.playlistId ? 'READY TO PLAY' : 'READY TO DRIVE');
     $('album').style.backgroundImage = id ? `url("${thumb(id)}")` : '';
     $('album').querySelector('.vinyl').style.display = id ? 'none' : 'block';
@@ -227,14 +263,17 @@
     const parsed = parseYouTube(raw);
     if (!parsed) {msg('Enter a valid YouTube video or playlist URL.','error');return;}
     if (parsed.type==='playlist') {
-      s.mode='playlist';s.playlistId=parsed.id;s.queue=[];s.index=0;
+      s.mode='playlist';s.playlistId=parsed.id;s.playlistTitle='';s.queue=[];s.index=0;
       msg('Loading YouTube playlist…');
+      fetchPlaylistTitle(parsed.id);
       cueSelection(false);
     } else {
-      if (s.mode!=='videos') {s.mode='videos';s.playlistId='';s.queue=[];s.index=0;}
+      if (s.mode!=='videos') {s.mode='videos';s.playlistId='';s.playlistTitle='';s.queue=[];s.index=0;}
       if (s.queue.length>=150) {msg('Queue limit: 150 entries.','error');return;}
       const first=s.queue.length===0;
-      s.queue.push({id:parsed.id,title:''});
+      const track={id:parsed.id,title:''};
+      s.queue.push(track);
+      fetchVideoTitle(track);
       if (first) {s.index=0;cueSelection(false);}
       else msg('Added to your playlist.','ok');
     }
@@ -261,6 +300,9 @@
   }
   function setup() {
     restore();updateModeButtons();updateQueue();updateHeader();
+    // Resolve any titles that were queued before they could be fetched.
+    for (const t of s.queue) if (!t.title) fetchVideoTitle(t);
+    if (s.playlistId && !s.playlistTitle) fetchPlaylistTitle(s.playlistId);
     $('queueToggle').addEventListener('click',()=>{s.queueOpen=!s.queueOpen;updateModeButtons();});
     $('addForm').addEventListener('submit',e=>{e.preventDefault();addFromInput($('youtubeInput').value);});
     $('playPause').addEventListener('click',togglePlay);
