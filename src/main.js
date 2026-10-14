@@ -498,6 +498,11 @@ const materials = {
   rock: new THREE.MeshStandardMaterial({
     color: 0x374348, roughness: 0.98, flatShading: true
   }),
+  // Distant massif silhouettes — kept dark and matte so fog and the
+  // atmospheric sky haze do the photoreal work.
+  mountain: new THREE.MeshStandardMaterial({
+    color: 0x3d4a55, roughness: 1.0, metalness: 0.0, flatShading: true
+  }),
   puddle: new THREE.MeshPhysicalMaterial({
     color: 0x7392a5, metalness: 0.28, roughness: 0.09,
     clearcoat: 1, clearcoatRoughness: 0.035,
@@ -1618,6 +1623,71 @@ async function loadForestGLB() {
 
 // Optional scanned props from scenery/{rock,fern,stump,shrub}.glb.
 // Instanced meshes are allocated lazily per installed type only.
+// ================================================================
+// Mountain backdrop: the scanned Google-Earth massif (moumtain.dae)
+// is one 4.3 km × 2.4 km relief mesh. Six instances flank the route
+// on a 640 m slot spacing, recycled as the player advances — the
+// route is endless, so mountains ride the same streaming window as
+// chunks and hold world poses that survive the origin rebase.
+// ================================================================
+const MOUNTAIN_SPACING = 640;
+const MOUNTAIN_COUNT = 6;
+const MOUNTAIN_SCALE = 0.55;
+let mountainGeometry = null;
+const massifs = [];
+
+async function loadMountain() {
+  const gltf = await queuedJob('backdrop:mountain', 30,
+    () => makeGLTFLoader().loadAsync(ASSETS.backdropMountain)
+  ).catch(() => null);
+  if (!gltf) return;
+  const parts = gltfParts(gltf);
+  if (!parts.length) return;
+  mountainGeometry = parts.length === 1 ? parts[0].geometry
+    : BufferGeometryUtils.mergeGeometries(parts.map(p => p.geometry));
+  for (let i = 0; i < MOUNTAIN_COUNT; i++) {
+    const mesh = new THREE.Mesh(mountainGeometry, materials.mountain);
+    mesh.userData.slot = null;
+    scene.add(mesh);
+    massifs.push(mesh);
+  }
+  updateMountains();
+}
+
+function updateMountains() {
+  if (!mountainGeometry) return;
+  const first = Math.floor((state.s - 320) / MOUNTAIN_SPACING);
+  for (let i = 0; i < massifs.length; i++) {
+    const mesh = massifs[i];
+    const slot = first + i;
+    if (mesh.userData.slot !== slot) {
+      mesh.userData.slot = slot;
+      const s = slot * MOUNTAIN_SPACING;
+      path.ensure(s + CFG.pathStep);
+      path.sample(s, workPath);
+      const rand = randomGenerator(Math.imul(slot, 2654435761));
+      const side = (slot & 1) ? 1 : -1;
+      const lateral = side * (780 + rand() * 420);
+      const c = Math.cos(workPath.heading);
+      const n = Math.sin(workPath.heading);
+      // DAE mesh min-y is 209 m (satellite altitude datum) — sink the
+      // base below the road line so the massif reads from the valley.
+      mesh.userData.wx = workPath.x + c * lateral;
+      mesh.userData.wy = workPath.y - 30 - 209 * MOUNTAIN_SCALE;
+      mesh.userData.wz = workPath.z - n * lateral;
+      mesh.scale.setScalar(MOUNTAIN_SCALE * (0.85 + rand() * 0.4));
+      mesh.rotation.y =
+        workPath.heading - Math.PI / 2 + (rand() - 0.5) * 0.5;
+    }
+    mesh.position.set(
+      mesh.userData.wx - origin.x,
+      mesh.userData.wy,
+      mesh.userData.wz - origin.z
+    );
+  }
+}
+
+
 async function loadSceneryGLB() {
   const names = ASSETS.sceneryKinds;
   const results = await Promise.all(names.map((name, i) =>
@@ -4188,6 +4258,7 @@ function maintainTrack() {
   }
   updateChunkLOD();
   maintainRegions();
+  updateMountains();
 }
 
 // Chunk distance LOD: heavy scanned assets only near the car. The
@@ -4937,6 +5008,7 @@ renderer.domElement.addEventListener('webglcontextlost', event => {
 maintainTrack();
 loadForestGLB();
 loadSceneryGLB();
+loadMountain();
 loadNature();
 loadCars();
 

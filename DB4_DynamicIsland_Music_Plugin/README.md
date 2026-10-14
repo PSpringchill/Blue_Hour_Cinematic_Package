@@ -36,6 +36,7 @@ Input note: browser focus can intercept WASD driving keys when active. Clicking 
 JS parse check, JSON parse checks, local HTTP service and static asset checks. Unreal editor build, embedded CEF YouTube playback, audio, and packaged macOS runtime **not tested**.
 
 ## Docs
-- https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Plugins/WebBrowserWidget/UWebBrowser
-- https://developers.google.com/youtube/iframe_api_reference
-- https://developers.google.com/youtube/terms/required-minimum-functionality
+
+- <https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Plugins/WebBrowserWidget/UWebBrowser>
+- <https://developers.google.com/youtube/iframe_api_reference>
+- <https://developers.google.com/youtube/terms/required-minimum-functionality>

@@ -5,7 +5,7 @@
 ## What is implemented
 
 | Module | Implementation | Important boundary |
-|---|---|---|
+| --- | --- | --- |
 | First-person | Driver-seat camera at left steering position, head movement | Fully modeled historic interior not included in source GLB; reconstructed dashboard/wood-rim steering wheel |
 | Steering/vehicle | W/A/S/D, front-wheel steer ±32°, rim animation, rolling tires, engine-speed calculation, braking/reverse | Controlled bicycle model, **not Chaos physics** |
 | Camera | Cockpit / chase / orbit, mouse freelook | Orbit is a secondary vehicle-mounted viewpoint |
@@ -63,7 +63,7 @@ The environment defaults to X-forward, Y-right, Z-up (Unreal cm). The imported g
 ## 4. Driving controls
 
 | Control | Key |
-|---|---|
+| --- | --- |
 | Accelerate | `W` or `↑` |
 | Brake / reverse | `S` or `↓` |
 | Steering left/right | `A` / `D` or `←` / `→` |
@@ -87,7 +87,7 @@ Synthetic textures and fallback pine primitives are for a fully offline runnable
 
 ## Environment source architecture
 
-```
+```text
 AstonDB4.uproject
 ├── Config/DefaultEngine.ini             # Mac-targeted Unreal rendering defaults
 ├── Source/AstonDB4/

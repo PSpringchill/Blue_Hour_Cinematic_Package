@@ -90,6 +90,9 @@ export const ASSETS = {
   ],
   sceneryKinds: ['rock', 'fern', 'stump', 'shrub'],
   sceneryFile: name => `scenery/${name}.glb`,
+  // Single scanned massif (Google-Earth capture, moumtain.dae source)
+  // placed as recycled horizon silhouettes beside the route.
+  backdropMountain: 'scenery/mountain.glb',
   regionFile: index =>
     `regions/region_${String(index).padStart(4, '0')}.json`,
   regionIndex: 'regions/index.json',
