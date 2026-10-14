@@ -14,6 +14,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { SSRPass } from 'three/addons/postprocessing/SSRPass.js';
+import { LightProbeGenerator } from 'three/addons/lights/LightProbeGenerator.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { $, clamp, lerp, damp, TAU, MOBILE, randomGenerator } from './core/math.js';
@@ -3169,7 +3170,9 @@ const mirrorShader = {
     tDiffuse: { value: null },
     textureMatrix: { value: null },
     tMask: { value: null },
-    uStrength: { value: 0.4 }
+    uStrength: { value: 0.4 },
+    uTime: { value: 0 },
+    uWet: { value: 0 }
   },
   vertexShader: `
     uniform mat4 textureMatrix;
@@ -3187,13 +3190,45 @@ const mirrorShader = {
     uniform sampler2D tDiffuse;
     uniform sampler2D tMask;
     uniform float uStrength;
+    uniform float uTime;
+    uniform float uWet;
     varying vec4 vUvProj;
     varying vec2 vMapUv;
+    float hash21(vec2 p) {
+      p = fract(p * vec2(234.34, 435.345));
+      p += dot(p, p + 34.23);
+      return fract(p.x * p.y);
+    }
+    float vnoise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash21(i), hash21(i + vec2(1, 0)), f.x),
+                 mix(hash21(i + vec2(0, 1)), hash21(i + vec2(1, 1)),
+                     f.x), f.y);
+    }
     void main() {
-      vec4 reflection = texture2DProj(tDiffuse, vUvProj);
       float mask = texture2D(tMask, vMapUv * vec2(2.0, 16.0)).r;
-      float alpha = smoothstep(0.16, 0.9, mask) * uStrength;
-      gl_FragColor = vec4(reflection.rgb * color, alpha);
+      vec4 uvp = vUvProj;
+      // Rain relief wobbles the mirrored image; standing pools stay
+      // calm, matching the WebGPU retroreflection sample's bump trick.
+      vec2 wob = (vec2(vnoise(vMapUv * vec2(60.0, 420.0) + uTime * 0.8),
+                       vnoise(vMapUv * vec2(50.0, 380.0) - uTime * 0.6))
+                  - 0.5) * 0.05 * mix(1.0, 0.35, mask) * uWet;
+      uvp.xy += wob * uvp.w;
+      vec3 refl = texture2DProj(tDiffuse, uvp).rgb;
+      // Streaky anisotropic blur on damp asphalt, sharpest in puddles.
+      float streak = mix(0.004, 0.0004, mask) * uWet;
+      refl += texture2DProj(tDiffuse, uvp + vec4(streak, 0, 0, 0)).rgb;
+      refl += texture2DProj(tDiffuse, uvp - vec4(streak, 0, 0, 0)).rgb;
+      refl += texture2DProj(tDiffuse,
+                            uvp + vec4(0, streak * 2.4, 0, 0)).rgb;
+      refl += texture2DProj(tDiffuse,
+                            uvp - vec4(0, streak * 2.4, 0, 0)).rgb;
+      refl *= 0.2;
+      // Whole surface goes faintly damp-reflective; pools mirror hard.
+      float alpha = smoothstep(0.16, 0.9, mask);
+      alpha = mix(0.30, 1.0, alpha) * uStrength * (0.45 + 0.55 * uWet);
+      gl_FragColor = vec4(refl * color, alpha);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }
@@ -3216,6 +3251,84 @@ roadMirror.material.uniforms.tMask.value = mirrorMask;
 roadMirror.material.transparent = true;
 roadMirror.material.depthWrite = false;
 scene.add(roadMirror);
+
+// Retroreflective response for lane paint and rail reflectors —
+// WebGL port of the retroreflection sample: a surface flares only
+// when the eye direction aligns with the headlight direction, so
+// dashes and catseyes glow inside the beam and nowhere else.
+const retroUniforms = {
+  uHeadPos: { value: new THREE.Vector3() },
+  uRetroGain: { value: 0 }
+};
+const headlightWorld = new THREE.Vector3();
+function addRetroResponse(material) {
+  material.onBeforeCompile = shader => {
+    Object.assign(shader.uniforms, retroUniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>',
+        '#include <common>\nvarying vec3 vWorldPos;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        { vec4 rwp = vec4(transformed, 1.0);
+          #ifdef USE_INSTANCING
+            rwp = instanceMatrix * rwp;
+          #endif
+          vWorldPos = (modelMatrix * rwp).xyz; }`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vWorldPos;
+        uniform vec3 uHeadPos;
+        uniform float uRetroGain;`)
+      .replace('#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        { vec3 toEye = cameraPosition - vWorldPos;
+          vec3 toLamp = uHeadPos - vWorldPos;
+          float dist = length(toLamp);
+          float retro =
+            pow(max(dot(normalize(toEye), normalize(toLamp)), 0.0),
+                22.0);
+          float falloff = 1.0 / (1.0 + dist * dist * 0.006);
+          totalEmissiveRadiance += diffuseColor.rgb *
+            uRetroGain * retro * falloff * vec3(0.85, 0.92, 1.05); }`);
+    material.userData.shader = shader;
+  };
+}
+addRetroResponse(materials.marking);
+addRetroResponse(materials.reflector);
+
+// Position-dependent diffuse GI along the route — WebGL equivalent
+// of the light-probe-volume sample. A cube capture at the car is
+// folded into a spherical-harmonic probe every ~250 m so ambient
+// light darkens under forest canopy and opens on ridges.
+const probeRT = new THREE.WebGLCubeRenderTarget(48, {
+  generateMipmaps: false });
+const probeCamera = new THREE.CubeCamera(0.5, 600, probeRT);
+scene.add(probeCamera);
+const ambientProbe = new THREE.LightProbe();
+ambientProbe.intensity = 0.4;
+scene.add(ambientProbe);
+let lastProbeS = -1e9;
+let probeBaking = false;
+async function bakeProbe() {
+  if (probeBaking) return;
+  probeBaking = true;
+  try {
+    probeCamera.position.copy(player.root.position);
+    probeCamera.position.y += 3;
+    const hidden = [roadMirror, ...headlightBeams, cockpit];
+    const wasVisible = hidden.map(o => o.visible);
+    for (const o of hidden) o.visible = false;
+    probeCamera.update(renderer, scene);
+    for (let i = 0; i < hidden.length; i++)
+      hidden[i].visible = wasVisible[i];
+    const probe =
+      await LightProbeGenerator.fromCubeRenderTarget(renderer, probeRT);
+    ambientProbe.sh.copy(probe.sh);
+  } catch (error) {
+    console.warn('probe bake skipped', error);
+  } finally {
+    probeBaking = false;
+  }
+}
 
 // Low-lying mist sheets drifting across the road and verges.
 const mistLayers = [];
@@ -4156,6 +4269,15 @@ function updateWorldEffects(time) {
     Math.sin(carHeading), 0, Math.cos(carHeading)
   );
   rainMaterial.uniforms.uBeamI.value = beamGain * 2.4;
+  // Retroreflective markings/reflectors: feed the live headlight
+  // world position and beam gain into the injected shader term.
+  playerHeadlights[0].getWorldPosition(headlightWorld);
+  retroUniforms.uHeadPos.value.copy(headlightWorld);
+  retroUniforms.uRetroGain.value =
+    2.6 * Math.min(playerHeadlights[0].intensity / 33, 1) *
+    (beamsOn ? 1 : 0.25);
+  roadMirror.material.uniforms.uTime.value = time;
+  roadMirror.material.uniforms.uWet.value = weatherIntensity;
   sprayMaterial.uniforms.uTime.value = time;
   sprayMaterial.uniforms.uSpeed.value = state.speed;
   // Wheel spray scales with the water actually under the tires.
@@ -4722,6 +4844,12 @@ function animate(now) {
   updateLighting(dt);
   updateWorldEffects(visualTime);
   renderLensRain(visualTime);
+  // Re-bake the ambient light probe as the car travels — ambient
+  // follows local occlusion (canopy tunnels vs open ridges).
+  if (started && state.s - lastProbeS > 250) {
+    lastProbeS = state.s;
+    bakeProbe();
+  }
   $('impact').style.opacity = String(state.hit * 0.27);
 
   hudElapsed += dt;
