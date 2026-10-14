@@ -566,8 +566,10 @@ const streamQueue = {
     }
   }
 };
-// Same key -> same promise, so duplicate requests share one load
-// instead of waiting on a job the queue silently deduplicated.
+// Same key -> same promise, so duplicate in-flight requests share one
+// load. Once settled the entry is dropped: retaining resolved job
+// values would pin every decoded GLB (scene, parser, geometry and
+// full-res images) for the whole session.
 const streamJobs = new Map();
 function queuedJob(key, priority, task) {
   if (streamJobs.has(key)) return streamJobs.get(key);
@@ -576,6 +578,8 @@ function queuedJob(key, priority, task) {
       () => task().then(resolve, reject));
   });
   streamJobs.set(key, job);
+  const clean = () => streamJobs.delete(key);
+  job.then(clean, clean);
   return job;
 }
 
@@ -1077,7 +1081,10 @@ function setInstance(mesh, index, x, y, z, yaw, sx, sy, sz) {
 }
 
 // Scanned tree GLBs are the only near-road forest source.
+// forestParts is the LOD0 roster; forestLods holds the LOD1/LOD2
+// part sets in parallel, falling back to LOD0 when a file is absent.
 let forestParts = null;
+const forestLods = [[], []];
 // Optional scanned props: rock / fern / stump / shrub parts per name.
 const sceneryParts = new Map();
 // Environment density scale driven by the N-key quality mode.
@@ -1130,7 +1137,11 @@ class TrackChunk {
     // and hero foliage.
     this.lodNear = new THREE.Group();
     this.lodMid = new THREE.Group();
-    this.root.add(this.lodNear, this.lodMid);
+    // Mid band only: visible when lodMid is on but lodNear is not —
+    // carries the LOD1 twin of the near-band trees so the two
+    // detail levels never draw at once.
+    this.lodMidOnly = new THREE.Group();
+    this.root.add(this.lodNear, this.lodMid, this.lodMidOnly);
 
     for (const mesh of [
       this.shrubs, this.rocks, this.grass, this.ferns
@@ -1184,9 +1195,11 @@ class TrackChunk {
 
   initGlbForest() {
     // Rebuild species meshes when the roster grows (nature birch can
-    // arrive after the initial species were already instanced).
-    if (this.glbTrees) {
-      for (const species of this.glbTrees) {
+    // arrive after the initial species were already instanced) or a
+    // LOD tier lands after the LOD0 set.
+    for (const key of ['glbTrees', 'glbTreesMid', 'glbTreesFar']) {
+      if (!this[key]) continue;
+      for (const species of this[key]) {
         for (const mesh of species) {
           mesh.removeFromParent();
           mesh.dispose();
@@ -1195,17 +1208,25 @@ class TrackChunk {
     }
     // Any species may receive every tree slot in the chunk.
     const capacity = CFG.treesPerChunk + 1;
-    this.glbTrees = forestParts.map(parts => parts.map(part => {
-      const mesh = new THREE.InstancedMesh(
-        part.geometry, part.material, capacity
-      );
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      mesh.frustumCulled = true;
-      mesh.castShadow = true;
-      mesh.userData.capacity = capacity;
-      this.lodMid.add(mesh);
-      return mesh;
-    }));
+    const makeSet = (roster, group) => forestParts.map(
+      (lod0, i) => (roster[i] || lod0).map(part => {
+        const mesh = new THREE.InstancedMesh(
+          part.geometry, part.material, capacity
+        );
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        mesh.frustumCulled = true;
+        mesh.castShadow = true;
+        mesh.userData.capacity = capacity;
+        group.add(mesh);
+        return mesh;
+      }));
+    // LOD0 renders inside lodNear (the ~5 nearest chunks); LOD1
+    // repeats the same roadside slots inside lodMid so receding
+    // chunks drop to half detail; deep-forest slots only ever get
+    // LOD2 — they stand 36-90 m off the road, never near the camera.
+    this.glbTrees = makeSet(forestParts, this.lodNear);
+    this.glbTreesMid = makeSet(forestLods[0], this.lodMidOnly);
+    this.glbTreesFar = makeSet(forestLods[1], this.lodMid);
   }
 
   strip(data, s0, s1, left, right, lift, color, terrain = false) {
@@ -1310,8 +1331,10 @@ class TrackChunk {
     }
 
     const rand = randomGenerator(Math.imul(index + 1, 747796405));
-    if (forestParts &&
-        (!this.glbTrees || this.glbTrees.length !== forestParts.length))
+    if (forestParts && (!this.glbTrees ||
+        this.glbTrees.length !== forestParts.length ||
+        !this.glbTreesFar ||
+        this.glbTreesFar.length !== forestParts.length))
       this.initGlbForest();
     for (const name of sceneryParts.keys()) this.initScenery(name);
     for (const name of variantAssets.keys()) this.initVariants(name);
@@ -1344,7 +1367,11 @@ class TrackChunk {
     // Every tree is a scanned GLB species — no procedural cones.
     // Slots are shared per species, so each species mesh is sized
     // for the full quota and overflow slots are simply skipped.
-    const glbSlots = this.glbTrees ? this.glbTrees.map(() => 0) : null;
+    // Near-band slots are written into both the LOD0 (lodNear) and
+    // LOD1 (lodMid) sets so each chunk swaps detail as it recedes;
+    // deep-forest slots only exist in the LOD2 set.
+    const nearSlots = this.glbTrees ? this.glbTrees.map(() => 0) : null;
+    const farSlots = this.glbTreesFar ? this.glbTreesFar.map(() => 0) : null;
     for (let j = 0; j < CFG.treesPerChunk; j++) {
       const s = this.start + rand() * CFG.chunkLength;
       const nearForest = j < Math.floor(CFG.treesPerChunk * 0.68);
@@ -1360,17 +1387,34 @@ class TrackChunk {
       const yaw = rand() * TAU;
 
       const species = Math.floor(rand() * this.glbTrees.length);
-      const slot = glbSlots[species];
-      if (slot >= this.glbTrees[species][0].userData.capacity) continue;
-      glbSlots[species] = slot + 1;
-      for (const mesh of this.glbTrees[species]) {
-        setInstance(mesh, slot, x, base, z, yaw, h, h, h);
+      if (nearForest) {
+        const slot = nearSlots[species];
+        if (slot >= this.glbTrees[species][0].userData.capacity) continue;
+        nearSlots[species] = slot + 1;
+        for (const mesh of this.glbTrees[species]) {
+          setInstance(mesh, slot, x, base, z, yaw, h, h, h);
+        }
+        for (const mesh of this.glbTreesMid[species]) {
+          setInstance(mesh, slot, x, base, z, yaw, h, h, h);
+        }
+      } else {
+        const slot = farSlots[species];
+        if (slot >= this.glbTreesFar[species][0].userData.capacity) continue;
+        farSlots[species] = slot + 1;
+        for (const mesh of this.glbTreesFar[species]) {
+          setInstance(mesh, slot, x, base, z, yaw, h, h, h);
+        }
       }
     }
-    if (this.glbTrees) {
-      this.glbTrees.forEach((meshes, species) => {
-        for (const mesh of meshes) {
-          mesh.count = glbSlots[species];
+    for (const [meshes, slots] of [
+      [this.glbTrees, nearSlots],
+      [this.glbTreesMid, nearSlots],
+      [this.glbTreesFar, farSlots]
+    ]) {
+      if (!meshes || !slots) continue;
+      meshes.forEach((parts, species) => {
+        for (const mesh of parts) {
+          mesh.count = slots[species];
           mesh.visible = mesh.count > 0;
           mesh.instanceMatrix.needsUpdate = true;
           if (mesh.count) mesh.computeBoundingSphere();
@@ -1679,6 +1723,31 @@ async function loadForestGLB() {
   forestParts = species.concat(forestParts || []);
   rebuildActiveChunks();
   toast('GLB FOREST ACTIVE', 2400);
+
+  // Reduced-detail tiers stream in after LOD0; they rebuild the
+  // instanced sets in place. Entries stay aligned with the roster
+  // by url index — species that already had an entry keep it.
+  const keepBase = forestParts.length - species.length;
+  for (const [tier, suffix] of [[0, '_lod1'], [1, '_lod2']]) {
+    const lods = await Promise.all(results.map((parts, i) => {
+      if (!parts) return Promise.resolve(null);
+      const lodUrl = urls[i].replace(/\.glb$/i, `${suffix}.glb`);
+      return queuedJob(`forest:${lodUrl}`, 60 + i + tier * 10,
+        () => makeGLTFLoader().loadAsync(lodUrl))
+        .then(gltf => {
+          const lodParts = gltfParts(gltf);
+          if (lodParts.length) normalizeParts(lodParts);
+          return lodParts.length ? lodParts : null;
+        })
+        .catch(() => null);
+    }));
+    // Filter by the same predicate as `species` to stay aligned.
+    const aligned = lods.filter((_, i) => results[i]);
+    species.forEach((_, si) => {
+      forestLods[tier][keepBase + si] = aligned[si];
+    });
+    rebuildActiveChunks();
+  }
 }
 
 // Optional scanned props from scenery/{rock,fern,stump,shrub}.glb.
@@ -2066,10 +2135,15 @@ async function loadCars() {
   const templates = [];
   for (let i = 0; i < CAR_SPECS.length; i++) {
     const spec = CAR_SPECS[i];
-    let gltf;
+    let gltf, lodGltf;
     try {
       gltf = await queuedJob(`cars:${i}`, 5,
         () => makeGLTFLoader().loadAsync(spec.url));
+      // Decimated *_lod.glb twin streams in alongside; missing file
+      // leaves the template with a null low-detail model.
+      lodGltf = await queuedJob(`cars:${i}:lod`, 5,
+        () => makeGLTFLoader().loadAsync(
+          spec.url.replace(/\.glb$/i, '_lod.glb'))).catch(() => null);
     } catch (error) { continue; }
     const template = new THREE.Group();
     const inner = new THREE.Group();
@@ -2121,9 +2195,46 @@ async function loadCars() {
         }
       });
     }
+    // The decimated twin inherits the same orientation transform —
+    // decimation preserves bounds, so inner's normalize applies 1:1.
+    let lodTemplate = null;
+    if (lodGltf) {
+      lodTemplate = new THREE.Group();
+      const lodInner = new THREE.Group();
+      lodInner.add(lodGltf.scene);
+      lodInner.rotation.copy(inner.rotation);
+      lodInner.scale.copy(inner.scale);
+      lodInner.position.copy(inner.position);
+      lodTemplate.add(lodInner);
+      lodTemplate.traverse(object => {
+        if (!object.isMesh) return;
+        const mats = Array.isArray(object.material)
+          ? object.material : [object.material];
+        for (const m of mats) {
+          capMaterialTextures(m);
+          // The decimated export carries fresh material copies, so
+          // the per-model fixup table has to run here too.
+          if (spec.fixup) {
+            for (const [re, props] of spec.fixup) {
+              if (!re.test(m.name)) continue;
+              if (props.color !== undefined) m.color.set(props.color);
+              if (props.emissive !== undefined && m.emissive)
+                m.emissive.set(props.emissive);
+              if (props.metalness !== undefined) m.metalness = props.metalness;
+              if (props.roughness !== undefined) m.roughness = props.roughness;
+              if (props.opacity !== undefined) {
+                m.transparent = true;
+                m.opacity = props.opacity;
+                m.depthWrite = false;
+              }
+            }
+          }
+        }
+      });
+    }
     // Clones share materials, so resolve 'largest' once on the
     // template — the same instance shows up inside every wrapper.
-    templates.push({ spec, template,
+    templates.push({ spec, template, lodTemplate,
       paintTarget: spec.paint === 'largest'
         ? largestPaintMaterial(template) : null });
   }
@@ -2146,7 +2257,8 @@ async function loadCars() {
   };
 
   function mount(car, tint, templateIndex) {
-    const { spec, template, paintTarget } = templates[templateIndex];
+    const { spec, template, lodTemplate, paintTarget } =
+      templates[templateIndex];
     const wrapper = template.clone(true);
     wrapper.userData.shared = true;   // geometry shared across clones
     const corners = new Map();  // corner key -> {nodes:[], front}
@@ -2212,6 +2324,38 @@ async function loadCars() {
       for (const node of wheel.nodes) spin.attach(node);
       car.wheels.push({ pivot, spin, front: wheel.front, mounted: true });
     }
+    // Decimated twin for distant traffic — swapped in per frame by
+    // |Δs| in updateCarVisuals. Its paint materials are fresh copies
+    // from the lod GLB, matched back to the hi-res target by name.
+    let low = null;
+    if (lodTemplate && car !== player) {
+      low = lodTemplate.clone(true);
+      low.userData.shared = true;
+      low.visible = false;
+      low.traverse(object => {
+        if (!object.isMesh) return;
+        object.castShadow = false;   // far cars skip the shadow pass
+        const mats = Array.isArray(object.material)
+          ? object.material : [object.material];
+        const isPaint = paintTarget
+          ? mats.some(m => m.name === paintTarget.name)
+          : mats.some(m => spec.paint.test(m.name));
+        if (!isPaint) return;
+        const tinted = mats.map(m => {
+          const c = m.clone();
+          c.color = tint.clone ? tint.clone() : new THREE.Color(tint);
+          if (c.metalness !== undefined) c.metalness = 0.45;
+          if (c.roughness !== undefined) c.roughness = 0.32;
+          if (c.envMapIntensity !== undefined) c.envMapIntensity = 1.15;
+          return c;
+        });
+        object.material = Array.isArray(object.material)
+          ? tinted : tinted[0];
+      });
+      car.root.add(low);
+    }
+    car.lodModel = low;
+
     car.visual.visible = false;
     car.imported = wrapper;
     if (car === player && cockpitMode) wrapper.visible = false;
@@ -4376,6 +4520,7 @@ function updateChunkLOD() {
     const d = chunk.index - here;
     chunk.lodNear.visible = d >= -2 && d <= nearReach;
     chunk.lodMid.visible = d >= -2 && d <= midReach;
+    chunk.lodMidOnly.visible = d > nearReach && d <= midReach;
   }
 }
 
@@ -4431,6 +4576,13 @@ function updateCarVisuals() {
     rival.car.root.visible = visible;
     if (!visible) continue;
 
+    // Far rivals render the decimated twin; the full model (with its
+    // wheel pivots) only exists inside the LOD distance.
+    if (rival.car.lodModel) {
+      const low = Math.abs(rival.s - state.s) > CFG.carLodDistance;
+      rival.car.lodModel.visible = low;
+      rival.car.imported.visible = !low;
+    }
     placeCar(rival.car, rival.s, rival.x, 0, 0, 0);
     for (const pool of rival.car.rearSpill)
       pool.material.opacity = 0.29 * weatherIntensity;
@@ -4449,6 +4601,11 @@ function updateCarVisuals() {
     car.car.root.visible = visible;
     if (!visible) continue;
 
+    if (car.car.lodModel) {
+      const low = Math.abs(car.s - state.s) > CFG.carLodDistance;
+      car.car.lodModel.visible = low;
+      car.car.imported.visible = !low;
+    }
     // dir -1 faces upstream: flip yaw π and mirror the steer angle.
     placeCar(car.car, car.s, car.x, car.dir < 0 ? Math.PI : 0, 0, 0);
     for (const pool of car.car.rearSpill)

@@ -23,7 +23,12 @@ export const CFG = {
   // -1 = left-hand traffic (UK/JP/TH style), +1 = right-hand traffic.
   // Autopilot cruising lane, traffic lanes and overtake side all
   // derive from this — flip it to mirror every lane behaviour.
-  driveSide: -1
+  driveSide: -1,
+
+  // Cars further than this along the route swap to their decimated
+  // *_lod.glb model (86k vs 717k tris on the Mustang); the player
+  // car always renders full detail.
+  carLodDistance: MOBILE ? 95 : 135
 };
 
 // Route shape: layered sine tables.
