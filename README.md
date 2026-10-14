@@ -187,3 +187,4 @@ The HTML structure, required UI controls, and JavaScript module syntax were vali
 
 - Three.js `0.170.0` ES modules from jsDelivr
 - Optional Poly Haven `dikhololo_night` 2K HDRI (CC0): <https://polyhaven.com/a/dikhololo_night>
+# Blue_Hour_Cinematic_Package
