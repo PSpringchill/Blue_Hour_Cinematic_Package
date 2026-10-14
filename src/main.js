@@ -503,10 +503,6 @@ const materials = {
     depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2,
     envMapIntensity: 2.4, side: THREE.DoubleSide
   }),
-  wetEdge: new THREE.MeshBasicMaterial({
-    color: 0x8facb9, map: puddleMask, transparent: true,
-    opacity: 0.09, depthWrite: false, side: THREE.DoubleSide
-  }),
   marking: new THREE.MeshStandardMaterial({
     vertexColors: true, roughness: 0.45, metalness: 0.05
   }),
@@ -4154,6 +4150,7 @@ const vehicleForwardQ = new THREE.Quaternion();
 const vehicleForwardV = new THREE.Vector3();
 
 let lastGaugeTime = -1;
+let fuelDrawn = false;
 function updateCamera(dt, snap = false) {
   if (orbitMode) {
     controls.update();
@@ -4187,8 +4184,11 @@ function updateCamera(dt, snap = false) {
       cockpitDials[0].update();
       cockpitDials[1].draw(rpm);
       cockpitDials[1].update();
-      cockpitDials[2].draw(72);                 // fuel ~3/4 tank
-      cockpitDials[2].update();
+      if (!fuelDrawn) {
+        cockpitDials[2].draw(72);               // fuel ~3/4 tank
+        cockpitDials[2].update();
+        fuelDrawn = true;
+      }
       cockpitDials[3].draw(48 + Math.min(35, Math.abs(state.speed)));
       cockpitDials[3].update();
       lastGaugeTime = state.elapsed;
@@ -4327,7 +4327,6 @@ function updateWorldEffects(time) {
 
   // Retained surface water feeds puddles and wet-edge glints.
   materials.puddle.opacity = 0.08 + 0.30 * surfaceWetness;
-  materials.wetEdge.opacity = 0.04 + 0.10 * surfaceWetness;
 
   for (let i = 0; i < mistLayers.length; i++) {
     const layer = mistLayers[i];
