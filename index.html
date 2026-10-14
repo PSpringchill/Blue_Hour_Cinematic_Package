@@ -379,6 +379,20 @@
     #stream-panel .head {
       color: #c5f6ff; letter-spacing: .18em; margin-bottom: 3px;
     }
+    /* Learner metrics sit below the stream panel, same style. */
+    #rl-panel {
+      position: fixed; left: 50%; top: 208px; z-index: 9;
+      transform: translateX(-50%);
+      background: rgba(5, 14, 22, .86);
+      border: 1px solid rgba(150, 200, 110, .28);
+      border-radius: 6px; padding: 10px 14px;
+      font: 10px/1.75 monospace; color: #b8e6a0;
+      display: none; min-width: 240px;
+    }
+    #rl-panel.on { display: block; }
+    #rl-panel .head {
+      color: #d8ffd0; letter-spacing: .18em; margin-bottom: 3px;
+    }
   </style>
 
   <!-- All Three.js modules use the same pinned version. -->
@@ -456,6 +470,7 @@
     <div id="toast"></div>
     <canvas id="water-debug" width="190" height="164"></canvas>
     <div id="stream-panel"></div>
+    <div id="rl-panel"></div>
   </main>
 
   <section id="start-screen">

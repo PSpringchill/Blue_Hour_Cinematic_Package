@@ -23,6 +23,8 @@ import { headingAt, curvatureAt, elevationAt, gradeAt,
          turnLimit, clampInside, PathRing, groundOffset }
   from './world/route.js';
 import { createCockpit } from './entities/cockpit.js';
+import { KalmanFilter, ObstacleTracker, predictAt }
+  from './ai/tracking.js';
 
 // ================================================================
 // 1. Configuration, renderer, lighting and environment
@@ -3601,6 +3603,11 @@ addEventListener('keydown', event => {
   if (event.code === 'KeyJ') cycleWorldMode();
   if (event.code === 'KeyR') recover();
   if (event.code === 'KeyV') cycleWeather();
+  if (event.code === 'KeyU') toggleRLPanel();
+  if (event.code === 'KeyL') toggleLearning();
+  if (event.code === 'KeyO') resetLearner();
+  if (event.code === 'BracketLeft') adjustLearnRate(-1);
+  if (event.code === 'BracketRight') adjustLearnRate(1);
   if (event.code === 'Enter' && !started) $('start').click();
 });
 
@@ -3725,7 +3732,20 @@ player.root.add(lidarRays);
 // Which rays ended on a car (vs. a barrier): only cars should push
 // the lane target sideways, the walls are handled by lane limits.
 const lidarHitCar = new Uint8Array(LIDAR_ANGLES.length);
-function sweepLidar() {
+
+// Per-ray Kalman smoothing: the raw range flickers when a car sits on
+// a ray's detection boundary, and a CV filter also gives each ray an
+// approach-rate estimate. A ray that loses its hit resets to max
+// range immediately — a cleared corridor must never lag behind.
+const lidarFilters = LIDAR_ANGLES.map(() => new KalmanFilter(30, 1.6));
+const lidarSmooth = new Float32Array(LIDAR_ANGLES.length)
+  .fill(LIDAR_RANGE);
+
+// Car footprint for ray hits: half-width ~0.9 m each means two cars
+// can already touch at |Δx| = 1.8 — a 1.0 m window let them slip
+// between rays. 1.5 m hit window + 2.8 m along-route margin cover
+// the real footprint while staying narrower than one lane.
+function sweepLidar(dt) {
   for (let i = 0; i < LIDAR_ANGLES.length; i++) {
     const a = state.yaw + LIDAR_ANGLES[i] * Math.PI / 180;
     const ds = Math.cos(a);
@@ -3737,14 +3757,23 @@ function sweepLidar() {
       if (Math.abs(lx) > CFG.barrierLimit) { range = t; break; }
       const ls = state.s + ds * t;
       for (const rival of roadCars) {
-        if (Math.abs(rival.s - ls) < 2.3 &&
-            Math.abs(rival.x - lx) < 1.0) {
+        if (Math.abs(rival.s - ls) < 2.8 &&
+            Math.abs(rival.x - lx) < 1.5) {
           range = t;
           car = 1;
           break;
         }
       }
     }
+    const filter = lidarFilters[i];
+    if (range < LIDAR_RANGE) {
+      filter.step(range, dt);
+      // A new obstacle much closer than the estimate must respond now.
+      if (filter.p - range > 6) filter.reset(range);
+    } else {
+      filter.reset(LIDAR_RANGE);
+    }
+    lidarSmooth[i] = Math.min(filter.p, LIDAR_RANGE);
     lidarRanges[i] = range;
     lidarHitCar[i] = car;
   }
@@ -3763,34 +3792,168 @@ function sweepLidar() {
 }
 
 const autoInput = { throttle: 0, brake: 0, steer: 0 };
-function autopilotInput() {
+
+// Kalman tracker: every car inside the scan window gets a CV-model
+// filter on (s, x), so the controller sees predicted positions and
+// closing speeds — not just instantaneous range rays.
+const tracker = new ObstacleTracker();
+
+// ================================================================
+// Online learner — stochastic hill-climb over three controller
+// gains, scored by a reward accumulated each physics step:
+//   + forward progress        - lane offset
+//   - braking / steering load - collision penalty (-18 per hit)
+// Every rl.window seconds the window's reward rate is compared to
+// the best seen so far; winners are committed as `best`, and the
+// next window's params are re-sampled around best with noise scaled
+// by rl.lr (the learning rate: [ ] adjusts it live, L freezes
+// exploration so the best policy is exploited directly).
+// ================================================================
+const rl = {
+  learn: true,
+  lr: 0.12,                                // [ / ] to tune live
+  window: 8,                               // seconds per evaluation
+  tWin: 0, rew: 0, rate: 0, evals: 0,
+  bestRate: -Infinity,
+  params: { latGain: 0.5, followK: 0.5, margin: 0.94 },
+  best:   { latGain: 0.5, followK: 0.5, margin: 0.94 },
+  // metrics for the panel
+  hits: 0, passes: 0, speedSum: 0, frames: 0,
+  prevHit: 0, leadCar: null, ttc: 0
+};
+const RL_BOUNDS = {
+  latGain: [0.3, 0.85],
+  followK: [0.3, 0.9],
+  margin: [0.78, 1.0]
+};
+
+function rlExplore() {
+  for (const k in rl.params) {
+    const noise = (Math.random() * 2 - 1) * rl.lr;
+    rl.params[k] = clamp(
+      rl.best[k] * (1 + noise), RL_BOUNDS[k][0], RL_BOUNDS[k][1]);
+  }
+}
+
+function stepRL(dt, auto) {
+  rl.tWin += dt;
+  rl.speedSum += state.speed;
+  rl.frames++;
+  rl.rew += dt * (state.speed * 0.06
+    - Math.abs(state.x - CFG.driveSide * 3.0) * 0.4
+    - auto.brake * 0.9
+    - Math.abs(state.steer) * 1.6);
+  if (state.hit >= 0.2 && rl.prevHit < 0.2) {
+    rl.rew -= 18;
+    rl.hits++;
+  }
+  rl.prevHit = state.hit;
+  // A car we were following that is now behind us = completed pass.
+  if (rl.leadCar && rl.leadCar.s < state.s - 6) {
+    rl.passes++;
+    rl.leadCar = null;
+  }
+  if (rl.tWin >= rl.window) {
+    rl.rate = rl.rew / rl.tWin;
+    rl.evals++;
+    if (rl.rate > rl.bestRate) {
+      rl.bestRate = rl.rate;
+      rl.best = { ...rl.params };
+    }
+    rl.tWin = 0;
+    rl.rew = 0;
+    if (rl.learn) rlExplore();
+    else Object.assign(rl.params, rl.best);
+  }
+}
+
+let rlPanelOn = false;
+function toggleRLPanel() {
+  rlPanelOn = !rlPanelOn;
+  $('rl-panel').classList.toggle('on', rlPanelOn);
+  toast(rlPanelOn ? 'LEARNER PANEL ON' : 'PANEL OFF', 1100);
+}
+function adjustLearnRate(dir) {
+  rl.lr = clamp(rl.lr * (dir > 0 ? 1.25 : 0.8), 0.02, 0.5);
+  toast(`LEARNING RATE ${rl.lr.toFixed(2)}`, 1100);
+}
+function toggleLearning() {
+  rl.learn = !rl.learn;
+  if (!rl.learn) Object.assign(rl.params, rl.best);
+  toast(rl.learn ? 'LEARNING (EXPLORING)' : 'EXPLOITING BEST', 1300);
+}
+function resetLearner() {
+  rl.best = { latGain: 0.5, followK: 0.5, margin: 0.94 };
+  rl.params = { ...rl.best };
+  rl.bestRate = -Infinity;
+  rl.rate = 0;
+  rl.evals = 0;
+  rl.hits = 0;
+  rl.passes = 0;
+  rl.speedSum = 0;
+  rl.frames = 0;
+  toast('LEARNER RESET', 1100);
+}
+
+function autopilotInput(dt) {
   const v = Math.max(state.speed, 3);
+  const P = rl.params;
+  const tracks = tracker.update(dt, roadCars, state.s);
 
   // Lane target: cruise on the regulated side (CFG.driveSide), or
   // swing to the opposite lane to pass the nearest car ahead.
   const laneX = CFG.driveSide * 3.0;
   let xTarget = laneX;
   let nearest = Infinity;
-  for (const rival of roadCars) {
-    const gap = rival.s - state.s;
+  let leadTrack = null;
+  for (const [car, track] of tracks) {
+    const gap = track.s.p - state.s;
     if (gap > -6 && gap < 30 + v * 0.6 && gap < nearest &&
-        Math.abs(rival.x - state.x) < 2.6) {
+        Math.abs(track.x.p - state.x) < 2.6) {
       nearest = gap;
+      leadTrack = track;
+      if ((car.dir ?? 1) > 0) rl.leadCar = car;
       xTarget = -laneX;                  // overtake via opposite lane
     }
   }
-  // Cars detected alongside by the outer rays nudge the line away.
-  if (lidarHitCar[0] && lidarRanges[0] < 6) xTarget += 1.4;
-  if (lidarHitCar[5] && lidarRanges[5] < 6) xTarget -= 1.4;
+
+  // Overtake commit check: an oncoming car due at our position inside
+  // the look-ahead horizon makes the opposite lane unsafe — hold our
+  // own lane and let the TTC logic below scrub speed instead.
+  if (xTarget === -laneX) {
+    for (const [car, track] of tracks) {
+      if ((car.dir ?? 1) > 0) continue;
+      const closing = v - track.s.v;      // oncoming s.v is negative
+      if (closing <= 0) continue;
+      const meetT = (track.s.p - state.s) / closing;
+      if (meetT > 0 && meetT < 5.0) { xTarget = laneX; break; }
+    }
+  }
+
+  // Predicted lateral overlap: a tracked car whose filtered x is
+  // drifting into us pushes the lane target away before the rays
+  // register it — this is what stops side contacts entirely.
+  for (const track of tracks.values()) {
+    const gap = track.s.p - state.s;
+    if (Math.abs(gap) > 7) continue;
+    const px = predictAt(track, 1.0).x;
+    const overlap = 2.4 - Math.abs(px - state.x);
+    if (overlap > 0) {
+      xTarget -= Math.sign(px - state.x || 1) * overlap;
+    }
+  }
+
+  // Smoothed outer rays still nudge away from cars alongside.
+  if (lidarHitCar[0] && lidarSmooth[0] < 6) xTarget += 1.4;
+  if (lidarHitCar[5] && lidarSmooth[5] < 6) xTarget -= 1.4;
   xTarget = clamp(xTarget, -5.3, 5.3);
 
   // Cascaded steering: lateral error -> lateral velocity -> heading
   // -> yaw rate, inverted through the bicycle model stepVehicle()
   // uses. Commanding lateral *velocity* (not heading) keeps the loop
   // gain independent of speed; tire slip (sideSpeed) is compensated.
-  // Gains tuned on an offline replica of stepVehicle(): 0 barrier
-  // hits over 13.5 km vs. a weaving ±3.6 m with a heading-only law.
-  const vLat = clamp(0.5 * (xTarget - state.x), -4, 4);
+  // latGain is learned online by the RL tuner (rl.params).
+  const vLat = clamp(P.latGain * (xTarget - state.x), -4, 4);
   const desiredYaw = Math.asin(
     clamp((vLat - state.sideSpeed) / v, -0.35, 0.35));
   const kappa = curvatureAt(state.s + v * 0.3);
@@ -3806,29 +3969,48 @@ function autopilotInput() {
   }
   const gripScale = 1 - 0.35 * clamp(waterAtCar / 0.14, 0, 1);
   let vTarget = Math.min(68, Math.sqrt(7.5 * gripScale /
-    Math.max(kMax, 0.0005)));
-  const frontRange = Math.min(lidarRanges[2], lidarRanges[3]);
-  const followDist = 8 + v * 0.5;
-  if (frontRange < followDist && (lidarHitCar[2] || lidarHitCar[3])) {
-    for (const rival of roadCars) {
-      const gap = rival.s - state.s;
-      // Only pace same-direction traffic — an oncoming car's
-      // magnitude is not a speed to match, just brake room.
-      if ((rival.dir ?? 1) > 0 && gap > 0 && gap < followDist &&
-          Math.abs(rival.x - state.x) < 2.2) {
-        vTarget = Math.min(vTarget, Math.max(6, rival.speed - 1.5));
-      }
-    }
+    Math.max(kMax, 0.0005))) * P.margin;
+
+  // TTC braking from the tracked closing speed: brake demand rises
+  // as predicted time-to-collision shrinks below 4 s — this reacts
+  // seconds earlier than the old range-only threshold.
+  let ttcBrake = 0;
+  for (const [car, track] of tracks) {
+    if ((car.dir ?? 1) <= 0) continue;      // same direction only
+    const gap = track.s.p - state.s;
+    if (gap <= 0 || gap > 60) continue;
+    if (Math.abs(track.x.p - state.x) > 2.4) continue;
+    const closing = state.speed - track.s.v;
+    if (closing <= 0.5) continue;
+    const ttc = gap / closing;
+    if (ttc < 4) ttcBrake = Math.max(ttcBrake, (4 - ttc) / 4);
+    // Desired-gap speed: pace the lead car minus the follow error.
+    vTarget = Math.min(vTarget,
+      Math.max(2, track.s.v + (gap - 8) * 0.5));
   }
 
-  autoInput.throttle = state.speed < vTarget - 0.6 ? 1 : 0;
-  autoInput.brake = state.speed > vTarget + 2.5 ? 1 : 0;
+  const frontRange = Math.min(lidarSmooth[2], lidarSmooth[3]);
+  const followDist = 8 + v * P.followK;
+  if (frontRange < followDist && (lidarHitCar[2] || lidarHitCar[3]) &&
+      leadTrack) {
+    vTarget = Math.min(vTarget,
+      Math.max(6, leadTrack.s.v - 1.5));
+  }
+
+  autoInput.throttle =
+    state.speed < vTarget - 0.6 && ttcBrake < 0.55 ? 1 : 0;
+  autoInput.brake =
+    state.speed > vTarget + 2.5 || ttcBrake > 0.7 ? 1 : 0;
+  rl.ttc = ttcBrake;                        // exposed to the RL panel
   return autoInput;
 }
 
 function toggleAutopilot() {
   autopilotOn = !autopilotOn;
   lidarRays.visible = autopilotOn;
+  tracker.reset();
+  rl.leadCar = null;
+  rl.prevHit = state.hit;
   $('auto-button').textContent = autopilotOn ? 'AUTO ON' : 'AUTO B';
   toast(autopilotOn ? 'AUTOPILOT ENGAGED' : 'MANUAL CONTROL', 1400);
 }
@@ -3836,7 +4018,8 @@ function toggleAutopilot() {
 function stepVehicle(dt) {
   let throttle, brake, direction, handbrake;
   if (autopilotOn) {
-    const auto = autopilotInput();
+    const auto = autopilotInput(CFG.fixedStep);
+    stepRL(CFG.fixedStep, auto);
     throttle = auto.throttle;
     brake = auto.brake;
     direction = auto.steer;
@@ -4743,6 +4926,26 @@ function updateHUD() {
       ` · LOD ${regionStats.lod.join('/')}` +
       ` · CULL ${regionStats.culled || 0}`;
   }
+
+  if (rlPanelOn) {
+    const p = rl.params;
+    const avgKmh = rl.frames ? (rl.speedSum / rl.frames) * 3.6 : 0;
+    const tracked = tracker.tracks.size;
+    $('rl-panel').innerHTML =
+      '<div class="head">AUTOPILOT / ONLINE LEARNER</div>' +
+      `REWARD ${rl.rate >= 0 ? '+' : ''}${rl.rate.toFixed(2)}/S` +
+      ` · BEST ${rl.bestRate === -Infinity ? '—' :
+          (rl.bestRate >= 0 ? '+' : '') + rl.bestRate.toFixed(2)}/S` +
+      ` · EVAL ${rl.evals} · TTC ${rl.ttc > 0 ?
+          (4 - rl.ttc * 4).toFixed(1) + 'S' : '—'}<br>` +
+      `PARAM LAT ${p.latGain.toFixed(2)} · FOLLOW ` +
+      `${p.followK.toFixed(2)} · MARGIN ${p.margin.toFixed(2)}<br>` +
+      `LR ${rl.lr.toFixed(2)} · ${rl.learn ? 'LEARNING' : 'EXPLOIT'}` +
+      ` · ${autopilotOn ? 'AUTO' : 'MANUAL'} · TRACK ${tracked} CARS<br>` +
+      `HITS ${rl.hits} · PASSES ${rl.passes} · ` +
+      `AVG ${avgKmh.toFixed(0)} KM/H<br>` +
+      `U PANEL · [ ] LR · L LEARN · O RESET · B AUTO`;
+  }
 }
 
 function resize() {
@@ -4775,14 +4978,36 @@ loadNature();
 loadCars();
 
 // Opt-in inspection hook for automated runtime checks (?debug).
-if (new URLSearchParams(location.search).has('debug')) {
+const urlParams = new URLSearchParams(location.search);
+if (urlParams.has('debug') || urlParams.has('autotest')) {
   window.blueHour = {
     state, rivals, traffic, regionPool, streamQueue, variantAssets,
     renderer,
-    chunks, lidarRanges, camera, controls, scene,
+    chunks, lidarRanges, camera, controls, scene, rl, tracker,
+    lidarSmooth,
     get forestParts() { return forestParts; },
     get reflectionMode() { return reflectionMode; }
   };
+}
+
+// Headless smoke test: ?autotest starts the engine, engages the
+// autopilot and logs a telemetry line every 2 s for console capture.
+if (urlParams.has('autotest')) {
+  setTimeout(() => {
+    $('start').click();
+    if (!autopilotOn) toggleAutopilot();
+    setInterval(() => console.log('AUTOTEST ' + JSON.stringify({
+      s: +state.s.toFixed(0),
+      kmh: +(state.speed * 3.6).toFixed(0),
+      x: +state.x.toFixed(2),
+      hit: +state.hit.toFixed(2),
+      tracks: tracker.tracks.size,
+      hits: rl.hits,
+      passes: rl.passes,
+      rate: +rl.rate.toFixed(2),
+      latGain: +rl.params.latGain.toFixed(3)
+    })), 2000);
+  }, 2500);
 }
 updateCarVisuals();
 cameraAim.copy(player.root.position).add(new THREE.Vector3(0, 0.8, 8));
@@ -4819,7 +5044,7 @@ function animate(now) {
   const active = started && !paused && !document.hidden;
 
   if (active) {
-    if (autopilotOn) sweepLidar();
+    if (autopilotOn) sweepLidar(dt);
     accumulator += dt;
     let substeps = 0;
     while (accumulator >= CFG.fixedStep && substeps < 8) {
