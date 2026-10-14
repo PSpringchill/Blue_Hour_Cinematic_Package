@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111d">
+  <title>BLUE HOUR | Cinematic Wet-Road Driving</title>
+  <link rel="icon" href="data:,">
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --cyan: #8beaff;
+      --muted: #9aacbc;
+      --panel: rgba(5, 14, 24, .65);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #07111d;
+      color: #edf6ff;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      overscroll-behavior: none;
+    }
+
+    #canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    button, input { font: inherit; }
+
+    button, .file-button {
+      border: 1px solid rgba(185, 220, 255, .22);
+      border-radius: 8px;
+      background: rgba(7, 18, 30, .78);
+      color: #dcefff;
+      padding: 10px 13px;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+
+    button:hover, .file-button:hover {
+      border-color: var(--cyan);
+      background: rgba(25, 58, 77, .85);
+    }
+
+    button:disabled { opacity: .4; cursor: wait; }
+
+    #lens-rain {
+      position: fixed;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      pointer-events: none;
+      opacity: .72;
+      transition: opacity .6s ease;
+      filter: contrast(1.07);
+    }
+
+    #vignette, #impact {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    #vignette {
+      background:
+        linear-gradient(180deg, rgba(0, 7, 17, .26), transparent 24%, transparent 70%, rgba(0, 7, 17, .40)),
+        radial-gradient(ellipse at center, transparent 36%, rgba(0, 5, 13, .45));
+    }
+
+    #impact {
+      background: radial-gradient(ellipse, transparent 40%, #ff334c);
+      opacity: 0;
+    }
+
+    #hud {
+      position: fixed;
+      inset: 0;
+      z-index: 3;
+      pointer-events: none;
+      padding: max(22px, env(safe-area-inset-top))
+               max(25px, env(safe-area-inset-right))
+               max(22px, env(safe-area-inset-bottom))
+               max(25px, env(safe-area-inset-left));
+    }
+
+    .top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+    }
+
+    .brand {
+      font-size: 15px;
+      font-weight: 850;
+      letter-spacing: .25em;
+    }
+
+    .subtitle, .label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    .subtitle { margin-top: 7px; }
+
+    .tools {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      pointer-events: auto;
+    }
+
+    .tools button, .file-button {
+      font-size: 10px;
+      letter-spacing: .08em;
+    }
+
+    .file-button input { display: none; }
+
+    #timing {
+      position: absolute;
+      top: 96px;
+      right: max(25px, env(safe-area-inset-right));
+      display: grid;
+      gap: 15px;
+      text-align: right;
+    }
+
+    .mono {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #lapTime { font-size: 29px; margin-top: 4px; }
+    #bestTime { font-size: 16px; margin-top: 5px; color: #c8dceb; }
+    #position { font-size: 32px; margin-top: 4px; }
+    #position small { font-size: 15px; color: var(--muted); }
+
+    #speed-panel {
+      position: absolute;
+      bottom: 40px;
+      right: max(27px, env(safe-area-inset-right));
+      text-align: right;
+    }
+
+    .speed-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 17px;
+    }
+
+    #gear {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 47px;
+      border: 1px solid rgba(139, 234, 255, .35);
+      border-radius: 8px;
+      color: var(--cyan);
+      font-size: 27px;
+    }
+
+    #speed {
+      font-size: clamp(65px, 9vw, 105px);
+      font-weight: 700;
+      line-height: .95;
+      letter-spacing: -.08em;
+    }
+
+    #rev-track {
+      width: 220px;
+      height: 4px;
+      background: rgba(165, 209, 236, .14);
+      margin: 15px 0 10px auto;
+      overflow: hidden;
+      border-radius: 4px;
+    }
+
+    #rev {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, #4aacd0, #a8f4ff 75%, #ff476a);
+      transition: width .1s linear;
+    }
+
+    #route-panel {
+      position: absolute;
+      bottom: 35px;
+      left: max(25px, env(safe-area-inset-left));
+      display: flex;
+      align-items: flex-end;
+      gap: 14px;
+    }
+
+    #map {
+      width: 135px;
+      height: 155px;
+      opacity: .86;
+    }
+
+    #distance { margin-top: 5px; font-size: 21px; }
+    #bend { margin-top: 10px; color: var(--cyan); font-size: 10px; letter-spacing: .12em; }
+    #stats { margin-top: 8px; font-size: 10px; color: #7690a2; }
+
+    #toast {
+      position: absolute;
+      top: 24%;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: 85vw;
+      padding: 12px 19px;
+      border-radius: 8px;
+      border: 1px solid rgba(139, 234, 255, .25);
+      background: rgba(5, 16, 26, .83);
+      color: #d9f7ff;
+      font-size: 12px;
+      letter-spacing: .09em;
+      text-align: center;
+      opacity: 0;
+      transition: opacity .2s;
+    }
+
+    #pause-label {
+      position: absolute;
+      top: 18%;
+      left: 50%;
+      transform: translateX(-50%);
+      letter-spacing: .3em;
+      font-size: 13px;
+      display: none;
+    }
+
+    #start-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: linear-gradient(90deg, rgba(2, 8, 17, .84), rgba(3, 13, 24, .30));
+      transition: opacity .6s, visibility .6s;
+    }
+
+    #start-screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+    .start-card { width: min(700px, 100%); }
+
+    .eyebrow {
+      color: var(--cyan);
+      letter-spacing: .29em;
+      font-size: 11px;
+      margin-bottom: 17px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(56px, 11vw, 112px);
+      line-height: .88;
+      letter-spacing: -.065em;
+      font-weight: 850;
+    }
+
+    .start-card p {
+      max-width: 490px;
+      color: #b3c9da;
+      font-size: 14px;
+      line-height: 1.7;
+      margin: 24px 0;
+    }
+
+    #start {
+      background: #c4f5ff;
+      color: #071c2c;
+      border: none;
+      padding: 15px 30px;
+      font-weight: 800;
+      letter-spacing: .15em;
+    }
+
+    #boot-status { margin-top: 15px; font-size: 11px; color: #849bad; }
+
+    .key-help {
+      margin-top: 27px;
+      font-size: 11px;
+      line-height: 1.9;
+      letter-spacing: .04em;
+      color: #8fa9bc;
+    }
+
+    #touch {
+      display: none;
+      position: fixed;
+      z-index: 4;
+      left: 15px;
+      right: 15px;
+      bottom: max(20px, env(safe-area-inset-bottom));
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .touch-cluster { display: flex; align-items: flex-end; gap: 8px; }
+
+    #touch button {
+      pointer-events: auto;
+      width: 60px;
+      height: 60px;
+      padding: 0;
+      background: rgba(12, 32, 47, .68);
+      font-size: 18px;
+    }
+
+    #touch .pedal { height: 78px; width: 65px; font-size: 10px; letter-spacing: .08em; }
+    #touch button.pressed { background: rgba(92, 190, 221, .4); border-color: var(--cyan); }
+
+    @media (pointer: coarse) {
+      #touch { display: flex; }
+      #speed-panel { bottom: 123px; }
+      #route-panel { bottom: 114px; }
+    }
+
+    @media (max-width: 650px) {
+      #hud { padding: 15px; }
+      .brand { font-size: 11px; }
+      .subtitle { font-size: 8px; }
+      .tools { gap: 4px; }
+      .tools button, .file-button { padding: 8px; font-size: 8px; }
+      .file-button { display: none; }
+      #timing { top: 75px; right: 17px; gap: 10px; }
+      #lapTime { font-size: 22px; }
+      #position { font-size: 26px; }
+      #speed-panel { right: 18px; }
+      #rev-track { width: 160px; }
+      #route-panel { left: 13px; gap: 2px; }
+      #map { width: 90px; height: 130px; }
+      #distance { font-size: 15px; }
+      #stats { font-size: 8px; }
+      .label { font-size: 8px; }
+      .key-help { font-size: 10px; }
+    }
+
+    #water-debug {
+      position: fixed; left: 18px; top: 92px; z-index: 9;
+      background: rgba(5, 14, 22, .82);
+      border: 1px solid rgba(110, 160, 190, .25);
+      border-radius: 6px; display: none;
+    }
+    #water-debug.on { display: block; }
+    /* Top-centre, clear of the timing column, speedo and minimap. */
+    #stream-panel {
+      position: fixed; left: 50%; top: 78px; z-index: 9;
+      transform: translateX(-50%);
+      background: rgba(5, 14, 22, .86);
+      border: 1px solid rgba(110, 160, 190, .28);
+      border-radius: 6px; padding: 10px 14px;
+      font: 10px/1.75 monospace; color: #9fd7ee;
+      display: none; min-width: 240px;
+    }
+    #stream-panel.on { display: block; }
+    #stream-panel .head {
+      color: #c5f6ff; letter-spacing: .18em; margin-bottom: 3px;
+    }
+  </style>
+
+  <!-- All Three.js modules use the same pinned version. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <canvas id="lens-rain" aria-hidden="true"></canvas>
+  <div id="vignette"></div>
+  <div id="impact"></div>
+
+  <main id="hud">
+    <div class="top-row">
+      <div>
+        <div class="brand">BLUE HOUR</div>
+        <div class="subtitle">Endless ridge / wet conditions</div>
+      </div>
+      <div class="tools">
+        <label class="file-button" title="Optional embedded GLB, Y-up and +Z-forward">
+          LOAD GLB
+          <input id="model-file" type="file" accept=".glb">
+        </label>
+        <button id="weather-button" title="Cycle clear, drizzle and storm weather (V)">RAIN: STORM</button>
+        <button id="light-button" title="Day, blue hour and night lighting presets (T)">LIGHT: BLUE</button>
+        <button id="beam-button" title="Headlight fog scattering beams (G)">BEAMS G</button>
+        <button id="auto-button" title="Lidar autopilot: 6-ray sensing, lane keeping, traffic avoidance (B)">AUTO B</button>
+        <button id="quality" title="Cycle adaptive, cinematic and performance rendering">FX AUTO</button>
+        <button id="camera-button">CAM C</button>
+        <button id="pause-button">PAUSE P</button>
+      </div>
+    </div>
+
+    <section id="timing">
+      <div>
+        <div class="label">Position</div>
+        <div class="mono" id="position">4 <small>/ 4</small></div>
+      </div>
+      <div>
+        <div class="label">Session time</div>
+        <div class="mono" id="lapTime">00:00.00</div>
+      </div>
+      <div>
+        <div class="label">Top speed</div>
+        <div class="mono" id="bestTime">0 KM/H</div>
+      </div>
+    </section>
+
+    <section id="speed-panel">
+      <div class="speed-row">
+        <div class="mono" id="gear">1</div>
+        <div class="mono" id="speed">000</div>
+      </div>
+      <div id="rev-track"><div id="rev"></div></div>
+      <div class="label">KM/H · RWD · <span id="grip-status">WET GRIP</span></div>
+    </section>
+
+    <section id="route-panel">
+      <canvas id="map" width="270" height="310"></canvas>
+      <div>
+        <div class="label">Distance driven</div>
+        <div id="distance" class="mono">0.00 KM</div>
+        <div id="bend">RIDGE RUN</div>
+        <div id="stats" class="mono">INITIALIZING</div>
+      </div>
+    </section>
+
+    <div id="pause-label">PAUSED</div>
+    <div id="toast"></div>
+    <canvas id="water-debug" width="190" height="164"></canvas>
+    <div id="stream-panel"></div>
+  </main>
+
+  <section id="start-screen">
+    <div class="start-card">
+      <div class="eyebrow">PROCEDURAL NIGHT DRIVE</div>
+      <h1>BLUE<br>HOUR.</h1>
+      <p>
+        A cinematic mountain-road driving experience: rain-swept asphalt, vivid blue-hour skies and realistic environmental lighting. No finish line.
+        Chase three rivals through a continuously generated mountain road —
+        tight switchbacks, steep grades, no finish line.
+      </p>
+      <button id="start" disabled>LOADING</button>
+      <div id="boot-status">Preparing WebGL and procedural scenery…</div>
+      <div class="key-help">
+        WASD / ARROWS — DRIVE &nbsp; SPACE — HANDBRAKE<br>
+        R — RECOVER &nbsp; P — PAUSE &nbsp; C — ORBIT &nbsp; V — WEATHER<br>
+        F — REFLECTIONS &nbsp; H — TELEMETRY &nbsp; B — AUTOPILOT<br>
+        T — LIGHT &nbsp; G — BEAMS &nbsp; N — ENVIRONMENT<br>
+        J — WORLD &nbsp; M — PROFILER
+      </div>
+    </div>
+  </section>
+
+  <div id="touch">
+    <div class="touch-cluster">
+      <button data-key="ArrowLeft" aria-label="Steer left">◀</button>
+      <button data-key="ArrowRight" aria-label="Steer right">▶</button>
+    </div>
+    <div class="touch-cluster">
+      <button data-key="Space" class="pedal">DRIFT</button>
+      <button data-key="ArrowDown" class="pedal">BRAKE</button>
+      <button data-key="ArrowUp" class="pedal">GAS</button>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

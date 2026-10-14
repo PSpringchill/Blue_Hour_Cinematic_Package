@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "props": [
+    {
+      "type": "rock",
+      "path": "./assets/scenery/rock_example.glb",
+      "license": "License verified by the installer operator",
+      "source": "https://polyhaven.com/"
+    }
+  ]
+}

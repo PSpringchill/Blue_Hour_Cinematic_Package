@@ -1,0 +1,13 @@
+{
+  "schema": "bluehour-impostor-atlas-v1",
+  "path": "./assets/impostors/forest_atlas.png",
+  "columns": 4,
+  "rows": 1,
+  "colorSpace": "srgb",
+  "alphaMode": "mask",
+  "license": "VERIFY_THIS_BEFORE_INSTALL",
+  "source": "User-provided licensed vegetation sprites",
+  "sha256": "SET_BY_INSTALLER",
+  "width": 2048,
+  "height": 512
+}

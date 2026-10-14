@@ -1,0 +1,69 @@
+{
+  "schema": "bluehour-region-v1",
+  "regions": [
+    {
+      "id": 0,
+      "path": "./assets/regions/region_000000.json"
+    },
+    {
+      "id": 1,
+      "path": "./assets/regions/region_000001.json"
+    },
+    {
+      "id": 2,
+      "path": "./assets/regions/region_000002.json"
+    },
+    {
+      "id": 3,
+      "path": "./assets/regions/region_000003.json"
+    },
+    {
+      "id": 4,
+      "path": "./assets/regions/region_000004.json"
+    },
+    {
+      "id": 5,
+      "path": "./assets/regions/region_000005.json"
+    },
+    {
+      "id": 6,
+      "path": "./assets/regions/region_000006.json"
+    },
+    {
+      "id": 7,
+      "path": "./assets/regions/region_000007.json"
+    },
+    {
+      "id": 8,
+      "path": "./assets/regions/region_000008.json"
+    },
+    {
+      "id": 9,
+      "path": "./assets/regions/region_000009.json"
+    },
+    {
+      "id": 10,
+      "path": "./assets/regions/region_000010.json"
+    },
+    {
+      "id": 11,
+      "path": "./assets/regions/region_000011.json"
+    },
+    {
+      "id": 12,
+      "path": "./assets/regions/region_000012.json"
+    },
+    {
+      "id": 13,
+      "path": "./assets/regions/region_000013.json"
+    },
+    {
+      "id": 14,
+      "path": "./assets/regions/region_000014.json"
+    },
+    {
+      "id": 15,
+      "path": "./assets/regions/region_000015.json"
+    }
+  ]
+}

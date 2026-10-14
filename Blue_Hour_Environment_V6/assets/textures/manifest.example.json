@@ -1,0 +1,17 @@
+{
+  "road": {
+    "color": "./assets/textures/road/color.jpg",
+    "normal": "./assets/textures/road/normal.jpg",
+    "roughness": "./assets/textures/road/roughness.jpg"
+  },
+  "forest": {
+    "color": "./assets/textures/forest/color.jpg",
+    "normal": "./assets/textures/forest/normal.jpg",
+    "roughness": "./assets/textures/forest/roughness.jpg"
+  },
+  "rock": {
+    "color": "./assets/textures/rock/color.jpg",
+    "normal": "./assets/textures/rock/normal.jpg",
+    "roughness": "./assets/textures/rock/roughness.jpg"
+  }
+}

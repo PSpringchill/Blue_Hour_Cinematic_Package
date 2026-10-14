@@ -1,0 +1,6 @@
+{
+  "trees": [
+    {"path": "./assets/models/1_spruce.glb"},
+    {"path": "./assets/models/2_pine.glb"}
+  ]
+}

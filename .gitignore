@@ -1,0 +1,18 @@
+# OS / editor
+.DS_Store
+__pycache__/
+*.pyc
+
+# Source car assets (multi-GB): keep only the runtime GLB + build inputs.
+# The optimized aston_db4.glb, its small tex/ maps and build_glb.py stay
+# tracked; raw scans, archives and unpacked PBR sheets are regenerable.
+cars/*.obj
+cars/*.7z
+cars/*.zip
+cars/*.rar
+cars/aston_db4_raw.glb
+cars/textures_pbr/
+
+# Local test/build scratch
+/tmp/
+*.log

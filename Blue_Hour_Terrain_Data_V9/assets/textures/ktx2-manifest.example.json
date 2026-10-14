@@ -1,0 +1,12 @@
+{
+  "road": {
+    "color": "./assets/textures/road_color.ktx2",
+    "normal": "./assets/textures/road_normal.ktx2",
+    "roughness": "./assets/textures/road_roughness.ktx2"
+  },
+  "forest": {
+    "color": "./assets/textures/forest_color.ktx2",
+    "normal": "./assets/textures/forest_normal.ktx2",
+    "roughness": "./assets/textures/forest_roughness.ktx2"
+  }
+}
