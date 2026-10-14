@@ -620,7 +620,60 @@ const ktx2Files = (ktx2Loader
   Object.values((manifest && manifest.ktx2) || {}).map(e => e.file)
 ));
 
-function pbrTexture(url, srgb) {
+// Raster textures arrive uncompressed: a 2048x2048 map holds ~21 MB
+// of GPU memory each, and the asset sets push the total toward 1 GB.
+// Downscaling oversized images to CFG.textureCap through a canvas
+// keeps the look while quartering the footprint. The original decode
+// buffers are released once the upload happens.
+const textureCap = MOBILE ? 768 : 1024;
+function capTexture(texture, cap = textureCap) {
+  const image = texture.image;
+  if (!image || texture.userData.capped) return texture;
+  texture.userData.capped = true;
+  const w = image.width, h = image.height;
+  const longest = Math.max(w, h);
+  if (!w || !h || longest <= cap) return texture;
+  const scale = cap / longest;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(w * scale));
+  canvas.height = Math.max(1, Math.round(h * scale));
+  canvas.getContext('2d')
+    .drawImage(image, 0, 0, canvas.width, canvas.height);
+  // Release the decoded source: ImageBitmap.close() frees the raster
+  // buffer synchronously; HTMLImageElement drops on GC once no
+  // texture references it anymore.
+  if (typeof image.close === 'function') image.close();
+  texture.image = canvas;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+// Every texture slot on a GLB material (GLTFLoader decodes embedded
+// images to full resolution regardless of mesh size on screen).
+function capMaterialTextures(material, cap = textureCap) {
+  for (const slot of [
+    'map', 'normalMap', 'roughnessMap', 'metalnessMap',
+    'aoMap', 'emissiveMap', 'alphaMap', 'bumpMap'
+  ]) {
+    if (material[slot]) capTexture(material[slot], cap);
+  }
+}
+
+// Raster decodes bypass the mesh stream queue, so parallel
+// Promise.all() batches spike the JS heap with image buffers.
+// A small semaphore keeps at most four decodes in flight.
+let texDecodeActive = 0;
+const texDecodePending = [];
+function acquireTexDecode() {
+  if (texDecodeActive < 4) { texDecodeActive++; return null; }
+  return new Promise(resolve => texDecodePending.push(resolve));
+}
+function releaseTexDecode() {
+  const next = texDecodePending.shift();
+  if (next) next(); else texDecodeActive--;
+}
+
+function pbrTexture(url, srgb, cap = textureCap) {
   const ktx2url = url.replace(/\.(jpg|jpeg|png|webp)$/i, '.ktx2');
   const attempt = ktx2Files.then(files =>
     files.has(ktx2url)
@@ -633,15 +686,17 @@ function pbrTexture(url, srgb) {
       if (srgb) compressed.colorSpace = THREE.SRGBColorSpace;
       return compressed;
     }
-    return new Promise(resolve => {
-      pbrLoader.load(url, texture => {
-        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-        texture.anisotropy =
-          Math.min(16, renderer.capabilities.getMaxAnisotropy());
-        if (srgb) texture.colorSpace = THREE.SRGBColorSpace;
-        resolve(texture);
-      }, undefined, () => resolve(null));
-    });
+    return Promise.resolve(acquireTexDecode()).then(() =>
+      new Promise(resolve => {
+        pbrLoader.load(url, texture => {
+          releaseTexDecode();
+          texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+          texture.anisotropy =
+            Math.min(16, renderer.capabilities.getMaxAnisotropy());
+          if (srgb) texture.colorSpace = THREE.SRGBColorSpace;
+          resolve(capTexture(texture, cap));
+        }, undefined, () => { releaseTexDecode(); resolve(null); });
+      }));
   });
 }
 
@@ -666,6 +721,10 @@ function wetComposite(roughTexture, seed) {
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  // The composited map replaces the raw scan; free its decoded image.
+  if (roughTexture.image && typeof roughTexture.image.close === 'function')
+    roughTexture.image.close();
+  roughTexture.dispose();
   return texture;
 }
 
@@ -1562,6 +1621,7 @@ function gltfParts(gltf) {
     const mat = material.clone();
     mat.vertexColors = false;
     mat.side = THREE.DoubleSide;
+    capMaterialTextures(mat);
     parts.push({ geometry: merged, material: mat });
   }
   return parts;
@@ -2016,6 +2076,14 @@ async function loadCars() {
     inner.add(gltf.scene);
     template.add(inner);
     template.updateMatrixWorld(true);
+    // Car templates are shared across all clones, so capping their
+    // texture slots once covers every traffic instance.
+    template.traverse(object => {
+      if (!object.isMesh) return;
+      const mats = Array.isArray(object.material)
+        ? object.material : [object.material];
+      for (const m of mats) capMaterialTextures(m);
+    });
     let bounds = new THREE.Box3().setFromObject(template);
     let size = bounds.getSize(new THREE.Vector3());
     // Put the long axis on Z (car forward) with +X -> +Z handedness.
@@ -3410,26 +3478,33 @@ for (let i = 0; i < 2; i++) {
 // mirrors the actual trees, rails and taillights. Selective: only
 // the road meshes reflect (a null selection would turn every pixel
 // into a mirror). F cycles SSR -> planar -> off.
+// SSRPass allocates six full-resolution frame buffers in its
+// constructor; creating it lazily keeps that memory free until the
+// user actually asks for ray-marched reflections (F key).
 let ssrPass = null;
-try {
-  ssrPass = new SSRPass({
-    renderer, scene, camera, width, height,
-    selects: chunks.map(chunk => chunk.road)
-  });
-  ssrPass.maxDistance = 60;
-  ssrPass.thickness = 0.018;
-  ssrPass.opacity = 0.3;
-  ssrPass.fresnel = true;
-  ssrPass.distanceAttenuation = true;
-  ssrPass.blur = true;
-  ssrPass.enabled = false;
-  composer.insertPass(ssrPass, 1);
-} catch (error) {
-  ssrPass = null;
+function ensureSSRPass() {
+  if (ssrPass) return ssrPass;
+  try {
+    ssrPass = new SSRPass({
+      renderer, scene, camera, width, height,
+      selects: chunks.map(chunk => chunk.road)
+    });
+    ssrPass.maxDistance = 60;
+    ssrPass.thickness = 0.018;
+    ssrPass.opacity = 0.3;
+    ssrPass.fresnel = true;
+    ssrPass.distanceAttenuation = true;
+    ssrPass.blur = true;
+    ssrPass.enabled = false;
+    composer.insertPass(ssrPass, 1);
+  } catch (error) {
+    ssrPass = null;
+  }
+  return ssrPass;
 }
 
-const reflectionModes = ssrPass ? ['SSR', 'PLANAR', 'OFF'] : ['PLANAR', 'OFF'];
-let reflectionMode = reflectionModes[0];
+const reflectionModes = ['SSR', 'PLANAR', 'OFF'];
+let reflectionMode = 'PLANAR';
 
 // ================================================================
 // 6. Inputs and fixed-step arcade vehicle dynamics
@@ -3574,7 +3649,9 @@ function toggleProfiler() {
 
 function toggleReflections() {
   const i = reflectionModes.indexOf(reflectionMode);
-  reflectionMode = reflectionModes[(i + 1) % reflectionModes.length];
+  let next = reflectionModes[(i + 1) % reflectionModes.length];
+  if (next === 'SSR' && !ensureSSRPass()) next = 'PLANAR';
+  reflectionMode = next;
   toast(`REFLECTIONS: ${reflectionMode}`, 1300);
 }
 
@@ -5058,7 +5135,9 @@ if (urlParams.has('autotest')) {
   setTimeout(() => {
     $('start').click();
     if (!autopilotOn) toggleAutopilot();
-    setInterval(() => console.log('AUTOTEST ' + JSON.stringify({
+    setInterval(() => {
+      if (window.gc) window.gc();
+      console.log('AUTOTEST ' + JSON.stringify({
       s: +state.s.toFixed(0),
       kmh: +(state.speed * 3.6).toFixed(0),
       x: +state.x.toFixed(2),
@@ -5067,8 +5146,15 @@ if (urlParams.has('autotest')) {
       hits: rl.hits,
       passes: rl.passes,
       rate: +rl.rate.toFixed(2),
-      latGain: +rl.params.latGain.toFixed(3)
-    })), 2000);
+      latGain: +rl.params.latGain.toFixed(3),
+      heapMB: performance.memory
+        ? Math.round(performance.memory.usedJSHeapSize / 1048576) : -1,
+      geom: renderer.info.memory.geometries,
+      tex: renderer.info.memory.textures,
+      calls: renderer.info.render.calls,
+      tris: Math.round(renderer.info.render.triangles / 1e6)
+      }));
+    }, 2000);
   }, 2500);
 }
 updateCarVisuals();
