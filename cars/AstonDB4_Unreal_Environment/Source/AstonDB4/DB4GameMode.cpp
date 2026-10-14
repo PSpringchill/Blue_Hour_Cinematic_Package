@@ -12,6 +12,7 @@
 #include "Components/SkyLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "EngineUtils.h"
+#include "DB4MusicIslandLibrary.h"
 
 ADB4GameMode::ADB4GameMode()
 {
@@ -58,4 +59,8 @@ void ADB4GameMode::StartPlay()
         }
     }
     Super::StartPlay();
+    if(APlayerController* LocalPlayer=W?W->GetFirstPlayerController():nullptr)
+    {
+        UDB4MusicIslandLibrary::ShowMusicIsland(LocalPlayer,TEXT("http://127.0.0.1:8766/"));
+    }
 }

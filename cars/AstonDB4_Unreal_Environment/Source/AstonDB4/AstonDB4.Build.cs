@@ -5,7 +5,8 @@ public class AstonDB4 : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new string[] {
-            "Core", "CoreUObject", "Engine", "InputCore", "ProceduralMeshComponent"
+            "Core", "CoreUObject", "Engine", "InputCore", "ProceduralMeshComponent",
+            "DB4MusicIsland"
         });
     }
 }

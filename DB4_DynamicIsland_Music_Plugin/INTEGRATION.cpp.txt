@@ -1,0 +1,33 @@
+// 1) COPY the Plugins/DB4MusicIsland directory to:
+//      <AstonDB4 Unreal Project>/Plugins/DB4MusicIsland/
+//
+// 2) Add the plugin to AstonDB4.uproject (existing Plugins array):
+//      {"Name": "DB4MusicIsland", "Enabled": true}
+//
+// 3) Add the module dependency in Source/AstonDB4/AstonDB4.Build.cs:
+//      PublicDependencyModuleNames.Add("DB4MusicIsland");
+//
+// 4) Add this include in Source/AstonDB4/DB4GameMode.cpp:
+#include "DB4MusicIslandLibrary.h"
+//
+// 5) At the very END of ADB4GameMode::StartPlay(), after Super::StartPlay():
+if (APlayerController* LocalPlayer = GetWorld()->GetFirstPlayerController())
+{
+    UDB4MusicIslandLibrary::ShowMusicIsland(LocalPlayer, TEXT("http://127.0.0.1:8766/"));
+}
+//
+// OPTIONAL: Show/hide from Blueprint:
+//     Show Music Island (PlayerController, PageUrl)
+//     Hide Music Island (PlayerController)
+//
+// For other video hosts, replace PageUrl with your HTTPS-hosted music page.
+//
+// START local development server BEFORE Unreal play:
+//   python3 run_music_server.py
+// OPEN in regular browser to verify:
+//   http://127.0.0.1:8766/
+//
+// Audio output is through the embedded YouTube player, NOT Unreal SoundCue.
+// No attempts are made to download, extract, or separate the audio.
+// Because of YouTube minimum embed sizes the video is always displayed.
+// Browser media support varies by UE version/platform; some videos may not embed.
