@@ -1654,6 +1654,32 @@ async function loadMountain() {
   updateMountains();
 }
 
+// Scanned grass clumps (Fir_trees_pack/grass.glb): the Grass_bqm
+// material merges both clump variants into one instancing part; the
+// daisy and soil-plane meshes are left out. Once loaded, every
+// chunk's verge instancing swaps geometry+material in place — the
+// per-instance scale/rotation placement stays unchanged.
+async function loadGrassGLB() {
+  const gltf = await queuedJob('grass:glb', 40,
+    () => makeGLTFLoader().loadAsync(ASSETS.grassClumps)
+  ).catch(() => null);
+  if (!gltf) return;
+  const parts = gltfParts(gltf).filter(
+    part => /grass/i.test(part.material.name || ''));
+  if (!parts.length) return;
+  const merged = parts.length === 1 ? parts[0].geometry
+    : BufferGeometryUtils.mergeGeometries(parts.map(p => p.geometry));
+  const material = parts[0].material;
+  material.alphaTest = 0.35;
+  material.side = THREE.DoubleSide;
+  addWindSway(material, 0.08);
+  for (const chunk of chunks) {
+    chunk.grass.geometry = merged;
+    chunk.grass.material = material;
+  }
+  toast('SCANNED GRASS ACTIVE', 2000);
+}
+
 function updateMountains() {
   if (!mountainGeometry) return;
   const first = Math.floor((state.s - 320) / MOUNTAIN_SPACING);
@@ -5009,6 +5035,7 @@ maintainTrack();
 loadForestGLB();
 loadSceneryGLB();
 loadMountain();
+loadGrassGLB();
 loadNature();
 loadCars();
 

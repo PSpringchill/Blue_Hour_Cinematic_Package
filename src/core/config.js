@@ -93,6 +93,8 @@ export const ASSETS = {
   // Single scanned massif (Google-Earth capture, moumtain.dae source)
   // placed as recycled horizon silhouettes beside the route.
   backdropMountain: 'scenery/mountain.glb',
+  // Photographic grass clumps replace the crossed-card verges.
+  grassClumps: 'scenery/grass.glb',
   regionFile: index =>
     `regions/region_${String(index).padStart(4, '0')}.json`,
   regionIndex: 'regions/index.json',
