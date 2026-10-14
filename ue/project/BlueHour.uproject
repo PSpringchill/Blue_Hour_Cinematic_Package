@@ -1,0 +1,25 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.8",
+	"Category": "Games",
+	"Description": "Blue Hour — cinematic wet mountain-road driving environment. Procedurally baked from the Three.js twin; sky atmosphere, Lumen, Nanite.",
+	"TargetPlatforms": [ "Mac" ],
+	"Modules": [
+		{
+			"Name": "AstonDB4",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{ "Name": "PythonScriptPlugin", "Enabled": true },
+		{ "Name": "EditorScriptingUtilities", "Enabled": true },
+		{ "Name": "ProceduralMeshComponent", "Enabled": true },
+		{ "Name": "Interchange", "Enabled": true },
+		{ "Name": "InterchangeEditor", "Enabled": true },
+		{ "Name": "ChaosVehiclesPlugin", "Enabled": true },
+		{ "Name": "PCG", "Enabled": true },
+		{ "Name": "Niagara", "Enabled": true },
+		{ "Name": "EnhancedInput", "Enabled": true }
+	]
+}

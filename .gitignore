@@ -16,3 +16,15 @@ cars/textures_pbr/
 # Local test/build scratch
 /tmp/
 *.log
+
+# UE staging + generated project binaries
+ue/staging/
+__pycache__/
+
+# AstonDB4 source package: heavy split GLBs (car already lives in cars/ + staging fbx)
+cars/AstonDB4_Unreal_Environment/Import/
+ue/project/Import/
+ue/project/Binaries/
+ue/project/Intermediate/
+ue/project/Saved/
+ue/project/DerivedDataCache/
