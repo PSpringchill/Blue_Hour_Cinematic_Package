@@ -2883,7 +2883,9 @@ const traffic = [];
                   0x3c4652, 0x66505f, 0x5f6b5a];
   for (let i = 0; i < 6; i++) {
     const dir = i % 3 === 2 ? -1 : 1;
-    const lane = (dir > 0 ? 1 : -1) * (2.4 + trafficRand() * 1.4);
+    // dir * driveSide: same-way cars keep to the regulated side,
+    // oncoming cars take the opposite lane (their own side).
+    const lane = dir * CFG.driveSide * (2.4 + trafficRand() * 1.4);
     traffic.push({
       car: makeCar(paints[i % paints.length]),
       s: dir > 0 ? 140 + trafficRand() * 680
@@ -3523,17 +3525,17 @@ const autoInput = { throttle: 0, brake: 0, steer: 0 };
 function autopilotInput() {
   const v = Math.max(state.speed, 3);
 
-  // Lane target: centre, or a passing line beside the nearest car
-  // that is ahead of (or alongside) the player and in its lane.
-  let xTarget = 0;
+  // Lane target: cruise on the regulated side (CFG.driveSide), or
+  // swing to the opposite lane to pass the nearest car ahead.
+  const laneX = CFG.driveSide * 3.0;
+  let xTarget = laneX;
   let nearest = Infinity;
   for (const rival of roadCars) {
     const gap = rival.s - state.s;
     if (gap > -6 && gap < 30 + v * 0.6 && gap < nearest &&
         Math.abs(rival.x - state.x) < 2.6) {
       nearest = gap;
-      const pass = rival.x > 0 ? -1 : 1;   // pass on the wider side
-      xTarget = rival.x + pass * 3.3;
+      xTarget = -laneX;                  // overtake via opposite lane
     }
   }
   // Cars detected alongside by the outer rays nudge the line away.
@@ -3727,7 +3729,7 @@ function stepVehicle(dt) {
     if (car.s < state.s - 150 || car.s > state.s + 950) {
       car.s = state.s + (car.dir > 0 ? 560 : 420) +
         Math.random() * 420;
-      car.lane = (car.dir > 0 ? 1 : -1) * (2.4 + Math.random() * 1.4);
+      car.lane = car.dir * CFG.driveSide * (2.4 + Math.random() * 1.4);
       car.x = car.lane;
       car.speed = car.cruise;
     }

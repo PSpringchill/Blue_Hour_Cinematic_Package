@@ -17,7 +17,13 @@ export const CFG = {
   fernsPerChunk: MOBILE ? 60 : 130,
 
   maxSpeed: 86,
-  fixedStep: 1 / 120
+  fixedStep: 1 / 120,
+
+  // Traffic regulation: which side of the road vehicles keep to.
+  // -1 = left-hand traffic (UK/JP/TH style), +1 = right-hand traffic.
+  // Autopilot cruising lane, traffic lanes and overtake side all
+  // derive from this — flip it to mirror every lane behaviour.
+  driveSide: -1
 };
 
 // Route shape: layered sine tables.
