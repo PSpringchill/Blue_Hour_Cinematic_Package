@@ -1,0 +1,179 @@
+{
+	"assetNamespace": "fab",
+	"listing":
+	{
+		"averageRating": 5,
+		"createdAt": "",
+		"description": "<p>A beautiful snowy road environment for you all. Game-ready with PBR materials and easy to intergrate to your projects! A full sized map version of this will be coming soon!</p><p></p>",
+		"isAiForbidden": false,
+		"isAiGenerated": false,
+		"lastUpdatedAt": "",
+		"listingType": "3d-model",
+		"media": "https://media.fab.com/image_previews/gallery_images/1081c0ae-6f1e-48ed-957f-b638348bf9de/180d292a-506c-45b1-b16f-6ffd56270bb8.jpeg",
+		"publishedAt": "2025-01-18T13:56:33.132065Z",
+		"reviewCount": 1,
+		"thumbnail": "https://media.fab.com/image_previews/gallery_images/1749e62c-d497-463e-a3b2-0dcb4e72a835/c3556dc3-7fcd-41dc-b3fe-d8abebd079ab.jpg",
+		"title": "Snowy Mountain Road Scene",
+		"uid": "c55c7247-f491-428b-8bf9-0f57340de2ee",
+		"updatedAt": "",
+		"user":
+		{
+			"coverImageUrl": "https://cdn1.epicgames.com/fab/seller/o-j7qwyz3y6dpa9sl9sdhaqbcle68pln/backgroundImage/blob-1920x540-9b5482d7863e0950090fd651dba85d6c.jpg",
+			"profileImageUrl": "https://cdn1.epicgames.com/fab/seller/o-j7qwyz3y6dpa9sl9sdhaqbcle68pln/profileImage/blob-500x500-4e2f85c3dfc9a5d16f3584e969ecc7fa.jpg",
+			"sellerName": "99.Miles",
+			"uid": "f1187c70-235e-4fe2-b09b-237d4df8f747"
+		},
+		"tags": [
+			{
+				"name": "Car",
+				"slug": "car",
+				"uid": "1b19907d-7199-4bea-888b-434c45591ad6"
+			},
+			{
+				"name": "Race",
+				"slug": "race",
+				"uid": "21e07f73-e8e4-4798-9741-109770125fb1"
+			},
+			{
+				"name": "Snow",
+				"slug": "snow",
+				"uid": "2e4b792b-895d-4db0-a02c-f3404afea7a7"
+			},
+			{
+				"name": "Tree",
+				"slug": "tree",
+				"uid": "365e087d-8586-4b06-94e8-69c855e5f0aa"
+			},
+			{
+				"name": "Hairpin",
+				"slug": "hairpin",
+				"uid": "4c725401-ea5f-41e0-bd7e-166d7bc4dd47"
+			},
+			{
+				"name": "Christmas",
+				"slug": "christmas",
+				"uid": "74e8326a-66f0-4bf8-9b16-dfe6403caf07"
+			},
+			{
+				"name": "Mountain",
+				"slug": "mountain",
+				"uid": "8969afa8-66b3-4638-86ff-f4c6cea35cf5"
+			},
+			{
+				"name": "Realistic",
+				"slug": "realistic",
+				"uid": "93b0d3f1-a96c-4d68-9d44-69a313519e32"
+			},
+			{
+				"name": "Bush",
+				"slug": "bush",
+				"uid": "957c25f2-a4cb-4087-8c61-e8c5566f7b17"
+			},
+			{
+				"name": "Shrub",
+				"slug": "shrub",
+				"uid": "98872d24-e706-4b4b-a972-fd6944dbb655"
+			},
+			{
+				"name": "Road",
+				"slug": "road",
+				"uid": "988f4797-e875-45c0-91b2-61a8f40d65a0"
+			},
+			{
+				"name": "Track",
+				"slug": "track",
+				"uid": "a96a56c1-869a-4d65-9b9b-b29a845ba9d4"
+			},
+			{
+				"name": "Winter",
+				"slug": "winter",
+				"uid": "ab84d47d-6822-46a1-958a-ea372bedea70"
+			},
+			{
+				"name": "Dirt",
+				"slug": "dirt",
+				"uid": "afb8dbdd-8c6c-44d6-a69b-9197f4a84963"
+			},
+			{
+				"name": "Driving",
+				"slug": "driving",
+				"uid": "c1295ff5-0671-46ac-bebb-31cb666cb73e"
+			}
+		],
+		"category":
+		{
+			"name": "Buildings & Architecture",
+			"path": "buildings-architecture",
+			"slug": "buildings-architecture",
+			"uid": "eec3bdd5-ba7a-45a8-b15d-67462b9630f6"
+		},
+		"assetFormats": [
+			{
+				"assetFormatType":
+				{
+					"name": "FBX",
+					"groupName": "3D Exchange Formats",
+					"code": "fbx",
+					"icon": "cube",
+					"extensions": [
+						"fbx"
+					]
+				}
+			},
+			{
+				"assetFormatType":
+				{
+					"name": "OBJ",
+					"groupName": "3D Exchange Formats",
+					"code": "obj",
+					"icon": "cube",
+					"extensions": [
+						"obj"
+					]
+				}
+			},
+			{
+				"assetFormatType":
+				{
+					"name": "Blender",
+					"groupName": "3D DCC Formats",
+					"code": "blender",
+					"icon": "blender",
+					"extensions": [
+						"blend"
+					]
+				}
+			},
+			{
+				"assetFormatType":
+				{
+					"name": "Additional files",
+					"groupName": "Other Formats",
+					"code": "additional-files",
+					"icon": "file",
+					"extensions": [
+						"zip"
+					]
+				}
+			}
+		],
+		"_PluginMetas":
+		{
+			"apiDataVersion": "0.0.1",
+			"entitlementUid": "ff4aedc8-e9f8-4481-aa5a-508f0e7b4289",
+			"cacheSize": 0,
+			"downloaded": []
+		}
+	},
+	"target": "diskExport",
+	"quality": "",
+	"format": "obj",
+	"fileId": "fa0a7bf6-ebc2-4730-bdab-74d243639d7a",
+	"platformIncluded": "",
+	"distributionPointBaseUrls": [],
+	"distributionMethod": "",
+	"entitlementUid": "ff4aedc8-e9f8-4481-aa5a-508f0e7b4289",
+	"invertedNormal": false,
+	"isConverted": false,
+	"isQuixel": false
+}

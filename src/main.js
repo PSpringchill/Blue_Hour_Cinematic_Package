@@ -508,14 +508,8 @@ const materials = {
   marking: new THREE.MeshStandardMaterial({
     vertexColors: true, roughness: 0.45, metalness: 0.05
   }),
-  rail: new THREE.MeshStandardMaterial({
-    color: 0x8b929b, metalness: 0.76, roughness: 0.29
-  }),
   foliage: new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, flatShading: true, side: THREE.DoubleSide
-  }),
-  reflector: new THREE.MeshStandardMaterial({
-    color: 0xd3eeff, emissive: 0x6091ae, emissiveIntensity: 0.7
   }),
   carbon: new THREE.MeshStandardMaterial({
     color: 0x5d6972, map: carbonTexture, roughness: 0.42, metalness: 0.55
@@ -672,11 +666,22 @@ function wetComposite(roughTexture, seed) {
 
 async function loadPBRTextures() {
   let loaded = 0;
-  const [asphaltDiff, asphaltNor, asphaltRough] = await Promise.all([
-    pbrTexture('assets/textures/asphalt_02_diff_2k.jpg', true),
-    pbrTexture('assets/textures/asphalt_02_nor_gl_2k.jpg', false),
-    pbrTexture('assets/textures/asphalt_02_rough_2k.jpg', false)
+  // Photographic American-road scan is the preferred surface; the
+  // generic Poly Haven set remains the fallback. Its ORM green
+  // channel serves directly as the roughness map.
+  let roadSet = await Promise.all([
+    pbrTexture('assets/textures/american_road_4_albedo.jpg', true),
+    pbrTexture('assets/textures/american_road_4_normal.jpg', false),
+    pbrTexture('assets/textures/american_road_4_orm.jpg', false)
   ]);
+  if (!roadSet[0] || !roadSet[1] || !roadSet[2]) {
+    roadSet = await Promise.all([
+      pbrTexture('assets/textures/asphalt_02_diff_2k.jpg', true),
+      pbrTexture('assets/textures/asphalt_02_nor_gl_2k.jpg', false),
+      pbrTexture('assets/textures/asphalt_02_rough_2k.jpg', false)
+    ]);
+  }
+  const [asphaltDiff, asphaltNor, asphaltRough] = roadSet;
   if (asphaltDiff && asphaltNor && asphaltRough) {
     materials.road.map = asphaltDiff;
     materials.road.bumpMap = null;
@@ -1037,9 +1042,6 @@ class TrackChunk {
       this.road, this.ground, this.verge, this.markings, this.puddles
     );
 
-    this.rails = new THREE.InstancedMesh(unitBox, materials.rail, 32);
-    this.posts = new THREE.InstancedMesh(unitBox, materials.rail, 18);
-    this.reflectors = new THREE.InstancedMesh(unitBox, materials.reflector, 18);
     this.shrubs = new THREE.InstancedMesh(
       shrubGeometry, materials.foliage, CFG.treesPerChunk * 2
     );
@@ -1067,16 +1069,12 @@ class TrackChunk {
     this.root.add(this.lodNear, this.lodMid);
 
     for (const mesh of [
-      this.rails, this.posts, this.reflectors,
       this.shrubs, this.rocks, this.grass, this.ferns
     ]) {
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       (mesh === this.grass || mesh === this.ferns
         ? this.lodMid : this.root).add(mesh);
     }
-    this.rails.castShadow = true;
-    this.rails.receiveShadow = true;
-    this.posts.castShadow = true;
     this.shrubs.castShadow = true;
   }
 
@@ -1245,39 +1243,6 @@ class TrackChunk {
       const curbColor = ((index * 8 + j) & 1) ? red : white;
       this.strip(marking, s0, s1, -7.5, -7, 0.045, curbColor);
       this.strip(marking, s0, s1, 7, 7.5, 0.045, curbColor);
-
-      path.sample(s0 + 4, workPath);
-      const c = Math.cos(workPath.heading);
-      const n = Math.sin(workPath.heading);
-
-      for (let side = 0; side < 2; side++) {
-        const lateral = side === 0 ? -8.35 : 8.35;
-        for (let rail = 0; rail < 2; rail++) {
-          setInstance(
-            this.rails, j * 4 + side * 2 + rail,
-            workPath.x + c * lateral - this.anchorX,
-            workPath.y - this.anchorY + lateral * workPath.bank + 0.62 + rail * 0.36,
-            workPath.z - n * lateral - this.anchorZ,
-            workPath.heading, 0.13, 0.13, 8.15
-          );
-        }
-      }
-    }
-
-    for (let j = 0; j <= 8; j++) {
-      path.sample(this.start + j * 8, workPath);
-      const c = Math.cos(workPath.heading);
-      const n = Math.sin(workPath.heading);
-      for (let side = 0; side < 2; side++) {
-        const lateral = side === 0 ? -8.35 : 8.35;
-        const x = workPath.x + c * lateral - this.anchorX;
-        const y = workPath.y - this.anchorY + lateral * workPath.bank;
-        const z = workPath.z - n * lateral - this.anchorZ;
-        setInstance(this.posts, j * 2 + side, x, y + 0.52, z,
-                    workPath.heading, 0.13, 1.08, 0.16);
-        setInstance(this.reflectors, j * 2 + side, x, y + 1.08, z,
-                    workPath.heading, 0.19, 0.12, 0.08);
-      }
     }
 
     const rand = randomGenerator(Math.imul(index + 1, 747796405));
@@ -1501,7 +1466,6 @@ class TrackChunk {
     updateGeometry(this.markings.geometry, marking);
 
     for (const mesh of [
-      this.rails, this.posts, this.reflectors,
       this.shrubs, this.rocks, this.grass, this.ferns
     ]) {
       mesh.instanceMatrix.needsUpdate = true;
@@ -3291,7 +3255,6 @@ function addRetroResponse(material) {
   };
 }
 addRetroResponse(materials.marking);
-addRetroResponse(materials.reflector);
 
 // Position-dependent diffuse GI along the route — WebGL equivalent
 // of the light-probe-volume sample. A cube capture at the car is

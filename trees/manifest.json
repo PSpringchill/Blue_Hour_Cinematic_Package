@@ -1,0 +1,32 @@
+{
+  "trees": {
+    "spruce": {
+      "file": "spruce.glb",
+      "source": "Fir_trees_pack/christmass_trees_pack.blend:Christmas tree_LOD0",
+      "license": "fab",
+      "sha256": "448769b01b6a8f990e17f8e328074ff063620d908cbc0fbf1f14988ece217408",
+      "installed": "2026-10-15T02:38:40+0700"
+    },
+    "pine": {
+      "file": "pine.glb",
+      "source": "Fir_trees_pack/christmass_trees_pack.blend:Christmas tree_6_LOD0",
+      "license": "fab",
+      "sha256": "85819dc145848d79442e4511fe4572184749709d1853b10b8fe7755a7a8ebefc",
+      "installed": "2026-10-15T02:38:40+0700"
+    },
+    "fir": {
+      "file": "fir.glb",
+      "source": "Fir_trees_pack/christmass_trees_pack.blend:Christmas tree_2_LOD0",
+      "license": "fab",
+      "sha256": "2e55d54d1cca99d396e5f6970ed35739d23289d625751ef94bde302095e4e655",
+      "installed": "2026-10-15T02:38:40+0700"
+    },
+    "birch": {
+      "file": "birch.glb",
+      "source": "Fir_trees_pack/christmass_trees_pack.blend:Christmas tree_4_LOD0",
+      "license": "fab",
+      "sha256": "1174b7914745087d6c2b489e9d2ce7d3f10552854e3eb3f0036da513c356c743",
+      "installed": "2026-10-15T02:38:40+0700"
+    }
+  }
+}

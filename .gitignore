@@ -21,6 +21,12 @@ cars/textures_pbr/
 ue/staging/
 __pycache__/
 
+# Source asset packs (converted into trees/ and assets/textures/):
+# 222 MB .blend + 38 MB terrain GLB exceed GitHub limits and are
+# regenerable from the packs.
+Fir_trees_pack/
+American_Road/
+
 # AstonDB4 source package: heavy split GLBs (car already lives in cars/ + staging fbx)
 cars/AstonDB4_Unreal_Environment/Import/
 ue/project/Import/
