@@ -96,7 +96,10 @@ def import_car():
         if EL.does_asset_exist(expected):
             log('Existing car mesh '+name)
             continue
-        result=import_file(CAR_ROOT/f'{name}.glb','/Game/DB4/Car')
+        # prefer the Blender-converted FBX — Interchange rejects several GLBs
+        src=CAR_ROOT/f'{name}.fbx'
+        if not src.exists():src=CAR_ROOT/f'{name}.glb'
+        result=import_file(src,'/Game/DB4/Car')
         log('Imported GLB '+name+': '+str(result))
         if EL.does_asset_exist(expected):continue
         # Interchange may append a suffix; inspect the results and rename the one static mesh.

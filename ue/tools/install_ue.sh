@@ -20,6 +20,10 @@ rsync -a \
 if [ -d "$DB4/Import" ]; then
   rsync -a "$DB4/Import/" "$TARGET/Import/"
 fi
+# Blender-converted FBX versions — Interchange chokes on the raw GLBs
+for f in "$ROOT/ue/staging/models/"{CAR_BODY,FL_WHEEL,FR_WHEEL,RL_WHEEL,RR_WHEEL}.fbx; do
+  [ -f "$f" ] && cp "$f" "$TARGET/Import/"
+done
 
 echo "project -> $TARGET/BlueHour.uproject"
 echo

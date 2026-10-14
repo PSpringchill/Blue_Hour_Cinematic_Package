@@ -229,7 +229,9 @@ def main():
                              'Content', 'Python', 'setup_db4.py')
     if os.path.exists(db4_setup):
         try:
-            exec(compile(open(db4_setup).read(), db4_setup, 'exec'), {})
+            # __name__ must be '__main__' or the script's main() never runs
+            exec(compile(open(db4_setup).read(), db4_setup, 'exec'),
+                 {'__name__': '__main__'})
             log('  setup_db4.py finished')
         except Exception as e:
             log('  !! setup_db4.py failed: %s' % e)
@@ -393,11 +395,11 @@ def main():
         env = lvl.spawn_actor_from_class(env_cls, origin)
         env.set_actor_label('BlueHour_Environment')
         try:
-            env.set_editor_property('b_use_baked_world', True)
-            log('  DB4Environment spawned (bUseBakedWorld=true)')
-        except Exception:
-            log('  DB4Environment spawned (bUseBakedWorld prop stale —'
-                ' rebuild module; default is true anyway)')
+            # python strips the 'b' prefix from bool UPROPERTYs
+            env.set_editor_property('use_baked_world', True)
+            log('  DB4Environment spawned (use_baked_world=true)')
+        except Exception as e:
+            log('  use_baked_world not set (%s) — default is true' % e)
     else:
         log('  AstonDB4 C++ module not loaded — foliage/rails/HUD inactive;'
             ' build BlueHourEditor and re-run phase 6')

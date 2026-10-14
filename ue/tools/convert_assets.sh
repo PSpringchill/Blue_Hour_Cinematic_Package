@@ -24,6 +24,7 @@ ls "$STAGE/textures" | wc -l | xargs echo "textures staged:"
 echo "== models: glb -> fbx (blender headless) =="
 if [ -x "$BLENDER" ]; then
   for g in "$ROOT/cars/aston_db4.glb" \
+           "$ROOT"/cars/AstonDB4_Unreal_Environment/Import/*.glb \
            "$ROOT/assets/nature/kit_props.glb" \
            "$ROOT"/assets/nature/*.glb \
            "$ROOT"/trees/*.glb "$ROOT"/scenery/*.glb; do
