@@ -4885,6 +4885,20 @@ setWeather(0);
 resize();
 updateHUD();
 
+// ?lite boots at minimum GPU load — a diagnostic mode for machines
+// where the full scene kills the WebGL context. If lite stays stable
+// while normal mode crashes, the workload is the trigger.
+if (urlParams.has('lite')) {
+  dpr = 1;
+  effectsEnabled = false;
+  adaptiveQuality = false;
+  reflectionMode = 'PLANAR';
+  setEnvDensity(0.55);
+  setWorldDensity(0.5);
+  resize();
+  $('boot-status').textContent = 'Ready · LITE mode (reduced GPU load)';
+}
+
 window.__bhReady = true;
 $('start').disabled = false;
 $('start').textContent = 'START ENGINE';
