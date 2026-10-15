@@ -4776,6 +4776,7 @@ function resize() {
 addEventListener('resize', resize);
 
 let contextLost = false;
+let contextLosses = 0;
 renderer.domElement.addEventListener('webglcontextlost', event => {
   event.preventDefault();
   contextLost = true;
@@ -4787,11 +4788,27 @@ renderer.domElement.addEventListener('webglcontextlost', event => {
 });
 // preventDefault() above lets the browser restore the context; three
 // re-uploads all GPU resources on the next render. Rendering is gated
-// on `contextLost` so nothing touches the dead context, and on
-// restore we drop pixel ratio — VRAM pressure is the usual cause.
+// on `contextLost` so nothing touches the dead context. Each loss
+// permanently lowers GPU load — repeated kills are almost always
+// VRAM/watchdog pressure, so surviving frames must be cheaper.
 renderer.domElement.addEventListener('webglcontextrestored', () => {
+  contextLosses++;
+  if (contextLosses >= 3) {
+    // Leave contextLost set — the render loop stays gated, canvas
+    // frozen. Third kill means the GPU stack itself is unstable.
+    $('boot-status').textContent =
+      'GPU context keeps dying — restart the browser or reboot';
+    toast('GPU UNSTABLE · RESTART BROWSER', 60000);
+    return;
+  }
   contextLost = false;
-  if (dpr > 1) { dpr = 1; resize(); }
+  if (dpr > 1) dpr = 1;            // loss 1: halve framebuffer memory
+  if (contextLosses >= 2) {        // loss 2: strip post chain + SSR
+    effectsEnabled = false;
+    if (reflectionMode === 'SSR') reflectionMode = 'PLANAR';
+    adaptiveQuality = false;
+  }
+  resize();
   $('boot-status').textContent = 'Ready · graphics context restored';
   toast('CONTEXT RESTORED · PRESS P TO RESUME', 4000);
 });
