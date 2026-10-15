@@ -12,10 +12,10 @@ import { ASSETS } from './config.js';
 import { queuedJob, capTexture,
          acquireTexDecode, releaseTexDecode } from './stream.js';
 
-const DRACO_PATH =
-  'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/';
-const BASIS_PATH =
-  'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/basis/';
+// Decoder/transcoder binaries are vendored so asset loading never
+// depends on CDN reachability at runtime.
+const DRACO_PATH = '../vendor/draco/';
+const BASIS_PATH = '../vendor/basis/';
 
 const dracoLoader = new DRACOLoader().setDecoderPath(DRACO_PATH);
 
@@ -54,7 +54,10 @@ export function createAssetLoaders(renderer) {
     const ktx2url = url.replace(/\.(jpg|jpeg|png|webp)$/i, '.ktx2');
     return ktx2Files.then(files =>
       files.has(ktx2url)
-        ? ktx2Loader.loadAsync(ktx2url).catch(() => null)
+        ? Promise.race([
+            ktx2Loader.loadAsync(ktx2url).catch(() => null),
+            new Promise(resolve => setTimeout(() => resolve(null), 8000))
+          ])
         : null
     ).then(compressed => {
       if (compressed) {

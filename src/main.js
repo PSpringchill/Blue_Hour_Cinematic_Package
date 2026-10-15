@@ -265,11 +265,10 @@ const { asphaltTexture, wetRoughness, soilTexture,
         lightSpillTexture, lightHaloTexture, materials } = PROC;
 
 // Mesh decoders for compressed GLB payloads; plain .glb files load
-// unchanged. Decoder binaries stream from the same pinned CDN.
+// unchanged. Decoder binaries are vendored locally so asset load
+// never depends on CDN reachability at runtime.
 const dracoLoader = new DRACOLoader()
-  .setDecoderPath(
-    'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/'
-  );
+  .setDecoderPath('vendor/draco/');
 function makeGLTFLoader() {
   const loader = new GLTFLoader();
   loader.setDRACOLoader(dracoLoader);
@@ -282,9 +281,7 @@ function makeGLTFLoader() {
 let ktx2Loader = null;
 try {
   ktx2Loader = new KTX2Loader()
-    .setTranscoderPath(
-      'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/basis/'
-    )
+    .setTranscoderPath('vendor/basis/')
     .detectSupport(renderer);
 } catch (error) { ktx2Loader = null; }
 
@@ -309,7 +306,10 @@ function pbrTexture(url, srgb, cap = textureCap) {
   const ktx2url = url.replace(/\.(jpg|jpeg|png|webp)$/i, '.ktx2');
   const attempt = ktx2Files.then(files =>
     files.has(ktx2url)
-      ? ktx2Loader.loadAsync(ktx2url).catch(() => null)
+      ? Promise.race([
+          ktx2Loader.loadAsync(ktx2url).catch(() => null),
+          new Promise(resolve => setTimeout(() => resolve(null), 8000))
+        ])
       : null
   );
   return attempt.then(compressed => {
