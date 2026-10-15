@@ -124,6 +124,10 @@ let statClock = 0, statFrames = 0;
 const loop = createLoop({
   step() {},                       // simulation lands in later stages
   render(dt, t) {
+    if (stack.contextLost) {
+      store.status = 'graphics context lost — waiting for restore…';
+      return;
+    }
     env.update(dt);
     filmGrade.uniforms.uTime.value = t;
     controls.update();

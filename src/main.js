@@ -4775,17 +4775,23 @@ function resize() {
 }
 addEventListener('resize', resize);
 
+let contextLost = false;
 renderer.domElement.addEventListener('webglcontextlost', event => {
   event.preventDefault();
+  contextLost = true;
+  gpuQuery = null;   // in-flight timer query dies with the context
   suspend();
   $('boot-status').textContent =
     'Graphics context lost — waiting for the browser to restore it…';
   toast('GRAPHICS CONTEXT LOST', 60000);
 });
 // preventDefault() above lets the browser restore the context; three
-// re-uploads all GPU resources on the next render, so we only need to
-// clear the messaging (the sim stays paused — the player resumes it).
+// re-uploads all GPU resources on the next render. Rendering is gated
+// on `contextLost` so nothing touches the dead context, and on
+// restore we drop pixel ratio — VRAM pressure is the usual cause.
 renderer.domElement.addEventListener('webglcontextrestored', () => {
+  contextLost = false;
+  if (dpr > 1) { dpr = 1; resize(); }
   $('boot-status').textContent = 'Ready · graphics context restored';
   toast('CONTEXT RESTORED · PRESS P TO RESUME', 4000);
 });
@@ -4903,7 +4909,7 @@ function animate(now) {
   renderLensRain(visualTime);
   // Re-bake the ambient light probe as the car travels — ambient
   // follows local occlusion (canopy tunnels vs open ridges).
-  if (started && state.s - lastProbeS > 250) {
+  if (started && !contextLost && state.s - lastProbeS > 250) {
     lastProbeS = state.s;
     bakeProbe();
   }
@@ -4946,6 +4952,8 @@ function animate(now) {
     }
   }
 
+  if (contextLost) return;   // dead context: skip all GL work until
+                             // webglcontextrestored fires
   pollGpuTimer();
   const cpuStart = performance.now();
   // Only one timer query may be in flight; while a previous result

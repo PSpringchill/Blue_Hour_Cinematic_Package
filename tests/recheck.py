@@ -142,6 +142,8 @@ def boot_run(bin, url, wait, tag):
     proc = subprocess.Popen([
         bin, '--headless=new', '--use-angle=swiftshader',
         '--enable-unsafe-swiftshader', '--enable-logging=stderr', '--v=0',
+        '--js-flags=--expose-gc',   # autotest calls gc() per tick —
+                                  # heap reads post-GC retained memory
         '--window-size=1024,600', f'--user-data-dir={prof}', url
     ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     time.sleep(wait)

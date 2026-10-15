@@ -106,6 +106,18 @@ export function createRendererStack(canvas) {
   }
   addEventListener('resize', resize);
 
+  // The loop reads `contextLost` and skips all GL work while the
+  // context is dead — three re-uploads GPU resources on restore.
+  let contextLost = false;
+  renderer.domElement.addEventListener('webglcontextlost', event => {
+    event.preventDefault();
+    contextLost = true;
+  });
+  renderer.domElement.addEventListener('webglcontextrestored', () => {
+    contextLost = false;
+  });
+
   return { renderer, scene, camera, composer, bloom, filmGrade,
-           resize, maxDPR };
+           resize, maxDPR,
+           get contextLost() { return contextLost; } };
 }
