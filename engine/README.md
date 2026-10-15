@@ -15,7 +15,7 @@ python3 -m http.server 8765   # from the repo root
 
 ## Layout
 
-```
+```text
 engine/
   index.html             importmap + canvas + status overlay only
   src/
