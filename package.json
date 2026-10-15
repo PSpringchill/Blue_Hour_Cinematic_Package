@@ -1,0 +1,11 @@
+{
+  "name": "blue-hour",
+  "private": true,
+  "version": "0.9.0",
+  "description": "Blue Hour — procedural mountain-road driving (Three.js, no build step)",
+  "scripts": {
+    "dev": "python3 -m http.server 8765 --bind 127.0.0.1",
+    "test": "python3 tests/recheck.py",
+    "test:quick": "python3 tests/recheck.py --skip-boot"
+  }
+}
