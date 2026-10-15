@@ -280,9 +280,22 @@ function makeGLTFLoader() {
 // the fallback for every material.
 let ktx2Loader = null;
 try {
-  ktx2Loader = new KTX2Loader()
-    .setTranscoderPath('vendor/basis/')
-    .detectSupport(renderer);
+  // Only worthwhile when the GPU accepts a compressed format —
+  // without ASTC/BC7/ETC2/S3TC the transcoder expands each texture to
+  // RGBA32 (~21MB at 2K), which is worse than the 1K-capped raster
+  // path and a known VRAM-pressure/context-loss contributor.
+  const gl = renderer.getContext();
+  const compressedOK =
+    gl.getExtension('WEBGL_compressed_texture_astc') ||
+    gl.getExtension('EXT_texture_compression_bptc') ||
+    gl.getExtension('WEBGL_compressed_texture_etc') ||
+    gl.getExtension('WEBGL_compressed_texture_s3tc') ||
+    gl.getExtension('WEBGL_compressed_texture_pvrtc');
+  if (compressedOK) {
+    ktx2Loader = new KTX2Loader()
+      .setTranscoderPath('vendor/basis/')
+      .detectSupport(renderer);
+  }
 } catch (error) { ktx2Loader = null; }
 
 // Scanned PBR texture sets (Poly Haven CC0) replace the procedural

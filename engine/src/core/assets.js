@@ -31,9 +31,20 @@ export function makeGLTFLoader() {
 export function createAssetLoaders(renderer) {
   let ktx2Loader = null;
   try {
-    ktx2Loader = new KTX2Loader()
-      .setTranscoderPath(BASIS_PATH)
-      .detectSupport(renderer);
+    // Skip KTX2 entirely when no compressed GPU format exists —
+    // transcoding to RGBA32 costs more VRAM than capped rasters.
+    const gl = renderer.getContext();
+    const compressedOK =
+      gl.getExtension('WEBGL_compressed_texture_astc') ||
+      gl.getExtension('EXT_texture_compression_bptc') ||
+      gl.getExtension('WEBGL_compressed_texture_etc') ||
+      gl.getExtension('WEBGL_compressed_texture_s3tc') ||
+      gl.getExtension('WEBGL_compressed_texture_pvrtc');
+    if (compressedOK) {
+      ktx2Loader = new KTX2Loader()
+        .setTranscoderPath(BASIS_PATH)
+        .detectSupport(renderer);
+    }
   } catch (error) { ktx2Loader = null; }
 
   const gltf = makeGLTFLoader();
