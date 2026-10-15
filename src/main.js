@@ -4778,8 +4778,16 @@ addEventListener('resize', resize);
 renderer.domElement.addEventListener('webglcontextlost', event => {
   event.preventDefault();
   suspend();
-  $('boot-status').textContent = 'Graphics context lost. Reload to restart.';
-  toast('GRAPHICS CONTEXT LOST · RELOAD TO RESTART', 60000);
+  $('boot-status').textContent =
+    'Graphics context lost — waiting for the browser to restore it…';
+  toast('GRAPHICS CONTEXT LOST', 60000);
+});
+// preventDefault() above lets the browser restore the context; three
+// re-uploads all GPU resources on the next render, so we only need to
+// clear the messaging (the sim stays paused — the player resumes it).
+renderer.domElement.addEventListener('webglcontextrestored', () => {
+  $('boot-status').textContent = 'Ready · graphics context restored';
+  toast('CONTEXT RESTORED · PRESS P TO RESUME', 4000);
 });
 
 // Initial bounded world construction.
