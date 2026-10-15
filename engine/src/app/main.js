@@ -1,7 +1,8 @@
-// Engine bootstrap — stage 1 "PBR foundation".
-// Wires the renderer stack, physical sky + preset lighting, the
-// asset streaming/decode pipeline and a small PBR demo ground.
-// Subsequent stages mount world streaming, vehicles, AI and UI on
+// Engine bootstrap — stage PBR foundation.
+// Wires the Vue HUD first (so the UI renders even without WebGL),
+// then the renderer stack, physical sky + preset lighting, and the
+// asset streaming/decode pipeline with a small PBR demo ground.
+// Later stages mount world streaming, vehicles, AI and fuller UI on
 // this shell; the legacy app (src/main.js at repo root) stays live
 // until the port reaches feature parity.
 import * as THREE from 'three';
@@ -17,19 +18,28 @@ import { streamQueue, capMaterialTextures } from '../core/stream.js';
 import { createRendererStack } from '../render/renderer.js';
 import { createEnvironment } from '../render/environment.js';
 import { createProctex } from '../render/proctex.js';
-
-const status = $('boot-status');
-const setStatus = t => { if (status) status.textContent = t; };
+import { createHud } from '../ui/hud.js';
+import { store } from '../ui/store.js';
 
 const bus = new EventBus();
+
+// ---- UI first: works even where WebGL is unavailable -------------
+let env;                                  // used by cyclePreset below
+const hud = createHud({
+  cyclePreset() {
+    if (env) store.preset = env.cycle();
+  }
+});
+store.status = 'booting…';
 
 // ---- render stack ------------------------------------------------
 let stack;
 try {
   stack = createRendererStack($('canvas'));
 } catch (error) {
-  setStatus('WebGL 2 is unavailable. Try a current browser ' +
-            'with hardware acceleration.');
+  store.webgl = false;
+  store.status = 'WebGL 2 unavailable — open this page in a browser ' +
+                 'with hardware acceleration (not an embedded preview).';
   throw error;
 }
 const { renderer, scene, camera, composer, filmGrade } = stack;
@@ -42,25 +52,23 @@ camera.position.set(3.2, 2.1, 5.5);
 controls.target.set(0, 0.4, 0);
 
 // ---- environment -------------------------------------------------
-const env = createEnvironment(stack);
-env.onEnv.loaded = s =>
-  setStatus(`Engine stage PBR · ${s} · orbit to inspect`);
-env.onEnv.failed = s =>
-  setStatus(`Engine stage PBR · ${s} · orbit to inspect`);
+env = createEnvironment(stack);
+env.onEnv.loaded = s => { store.env = s; store.status = 'ready'; };
+env.onEnv.failed = s => { store.env = s; store.status = 'ready'; };
+store.preset = env.preset.name;
 
 // ---- materials: procedural fallbacks + scanned PBR ---------------
 const PROC = createProctex(renderer);
 const { materials } = PROC;
 const loaders = createAssetLoaders(renderer);
 
-// Demo slab: a 24 m road strip wearing the scanned asphalt PBR set
+// Demo slab: a road strip wearing the scanned asphalt PBR set
 // (albedo/normal/ORM) through the same capped loader the engine uses.
 const demo = new THREE.Mesh(
   new THREE.PlaneGeometry(14, 24, 1, 1).rotateX(-Math.PI / 2),
   materials.road
 );
 demo.receiveShadow = true;
-demo.position.y = 0.001;
 scene.add(demo);
 
 const strip = new THREE.Mesh(
@@ -111,23 +119,36 @@ loaders.queuedJob('demo:car', 10, () =>
 }).catch(() => {});
 
 // ---- loop ----------------------------------------------------------
+let statClock = 0, statFrames = 0;
 const loop = createLoop({
   step() {},                       // simulation lands in later stages
   render(dt, t) {
     env.update(dt);
     filmGrade.uniforms.uTime.value = t;
     controls.update();
+    // info.autoReset is off (multi-pass stats sum) — reset per frame.
+    renderer.info.reset();
     composer.render();
+    // HUD stats ~4 Hz — Vue reads the reactive store, not the DOM.
+    statFrames++; statClock += dt;
+    if (statClock >= 0.25) {
+      store.fps = Math.round(statFrames / statClock);
+      store.draws = renderer.info.render.calls;
+      store.tris = renderer.info.render.triangles;
+      store.queueDone = streamQueue.done;
+      store.queueFailed = streamQueue.failed;
+      statClock = 0; statFrames = 0;
+    }
   }
 });
 
-setStatus('Engine stage PBR · streaming assets…');
+store.status = 'streaming assets…';
 loop.start();
 
 // Debug surface for verification tooling.
 if (new URLSearchParams(location.search).has('debug')) {
   window.__engine = {
     THREE, scene, camera, renderer, stack, env, materials,
-    queue: streamQueue
+    queue: streamQueue, store
   };
 }
