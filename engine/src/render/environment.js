@@ -10,8 +10,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { LIGHT_PRESETS, PARTICLES, ASSETS } from '../core/config.js';
 import { MOBILE } from '../core/math.js';
 
-const HDR_FALLBACK =
-  'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/dikhololo_night_2k.hdr';
+const HDR_FALLBACK = '../assets/hdri/dikhololo_night_1k.hdr';
 
 export function createEnvironment({ renderer, scene, bloom }) {
   const hemi = new THREE.HemisphereLight(0x8cbce5, 0x091916, 1.45);

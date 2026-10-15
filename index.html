@@ -395,12 +395,14 @@
     }
   </style>
 
-  <!-- All Three.js modules use the same pinned version. -->
+  <!-- All Three.js modules use the same pinned version. Vendored
+       locally under vendor/ so the game needs zero network beyond
+       the local server. -->
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      "three": "./vendor/three/three.module.js",
+      "three/addons/": "./vendor/three/jsm/"
     }
   }
   </script>
@@ -507,5 +509,20 @@
   </div>
 
   <script type="module" src="src/main.js"></script>
+  <script>
+    // Boot watchdog: if the module graph fails (file:// open, blocked
+    // import, old browser without import maps) report it instead of
+    // sitting on LOADING forever.
+    setTimeout(function () {
+      if (!window.__bhReady) {
+        var el = document.getElementById('boot-status');
+        var btn = document.getElementById('start');
+        if (el) el.textContent =
+          'Module load stalled — serve over http://127.0.0.1:8765/ ' +
+          'in a current Safari/Chrome and hard-reload (Cmd+Shift+R)';
+        if (btn) btn.textContent = 'LOAD FAILED';
+      }
+    }, 12000);
+  </script>
 </body>
 </html>

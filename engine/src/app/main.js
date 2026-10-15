@@ -40,6 +40,7 @@ try {
   store.webgl = false;
   store.status = 'WebGL 2 unavailable — open this page in a browser ' +
                  'with hardware acceleration (not an embedded preview).';
+  window.__engineReady = true;   // HUD mounted — watchdog stays quiet
   throw error;
 }
 const { renderer, scene, camera, composer, filmGrade } = stack;
@@ -142,6 +143,7 @@ const loop = createLoop({
   }
 });
 
+window.__engineReady = true;
 store.status = 'streaming assets…';
 loop.start();
 

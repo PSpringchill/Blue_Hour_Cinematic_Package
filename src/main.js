@@ -187,9 +187,9 @@ room.dispose();
 let environmentStatus = 'HDR LOADING';
 
 // CC0 HDR environment. Geometry/textures for the scene are otherwise local.
-// Source: [polyhaven](https://polyhaven.com/a/dikhololo_night)
-const HDR_URL =
-  'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/dikhololo_night_2k.hdr';
+// Source: [polyhaven](https://polyhaven.com/a/dikhololo_night) — local
+// copy under assets/hdri/ so lighting never waits on a remote fetch.
+const HDR_URL = 'assets/hdri/dikhololo_night_1k.hdr';
 
 new RGBELoader().load(
   HDR_URL,
@@ -4849,6 +4849,7 @@ setWeather(0);
 resize();
 updateHUD();
 
+window.__bhReady = true;
 $('start').disabled = false;
 $('start').textContent = 'START ENGINE';
 if (environmentStatus === 'HDR LOADING') {

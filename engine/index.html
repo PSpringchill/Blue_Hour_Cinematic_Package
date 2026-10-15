@@ -31,9 +31,9 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-    "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.esm-browser.prod.js"
+    "three": "../vendor/three/three.module.js",
+    "three/addons/": "../vendor/three/jsm/",
+    "vue": "../vendor/vue/vue.esm-browser.prod.js"
   }
 }
 </script>
@@ -42,5 +42,16 @@
 <canvas id="canvas"></canvas>
 <div id="ui"></div>
 <script type="module" src="src/app/main.js"></script>
+<script>
+  setTimeout(function () {
+    if (!window.__engineReady) {
+      var el = document.getElementById('ui');
+      if (el) el.innerHTML =
+        '<div style="position:fixed;left:16px;bottom:16px;color:#ffb;' +
+        'font:13px monospace">Module load stalled — serve over ' +
+        'http://127.0.0.1:8765/engine/ and hard-reload</div>';
+    }
+  }, 12000);
+</script>
 </body>
 </html>
