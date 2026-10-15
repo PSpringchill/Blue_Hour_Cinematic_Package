@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blue Hour Engine — stage PBR</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden;
+               background: #0a1524; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%;
+           display: block; }
+  #boot-status {
+    position: fixed; left: 16px; bottom: 16px; z-index: 10;
+    font: 12px/1.5 ui-monospace, Menlo, monospace;
+    color: #b8d4ea; background: rgba(8,16,26,.72);
+    padding: 8px 12px; border-radius: 8px;
+    border: 1px solid rgba(140,188,229,.25);
+    pointer-events: none; white-space: pre;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="boot-status">Engine stage PBR · booting…</div>
+<script type="module" src="src/app/main.js"></script>
+</body>
+</html>
