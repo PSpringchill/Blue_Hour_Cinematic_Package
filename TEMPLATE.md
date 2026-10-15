@@ -11,7 +11,11 @@ index.html              markup + CSS + importmap only
 src/
   main.js               engine: scene, streaming, physics, HUD, loop
   core/math.js          pure helpers (clamp, damp, seeded rand, TAU)
-  core/config.js        CFG, ROUTE, LIGHT_PRESETS, WEATHER, ASSETS
+  core/config.js        CFG + all data tables: ROUTE, LIGHT_PRESETS,
+                        WEATHER, ASSETS, CAR_SPECS, WATER, MOUNTAIN,
+                        REGION, LIDAR, RL_BOUNDS, PARTICLES, MODES
+  core/stream.js        asset queue, job dedupe, texture caps/decode
+  render/proctex.js     procedural fallback textures + material table
   world/route.js        path ring + terrain offset, driven by ROUTE
   entities/cockpit.js   DB4 interior factory (gauges, steering wheel)
 assets/                 scanned textures, nature GLBs, terrain maps

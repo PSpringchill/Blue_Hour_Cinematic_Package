@@ -18,7 +18,12 @@ import { LightProbeGenerator } from 'three/addons/lights/LightProbeGenerator.js'
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { $, clamp, lerp, damp, TAU, MOBILE, randomGenerator } from './core/math.js';
-import { CFG, LIGHT_PRESETS, WEATHER, ASSETS } from './core/config.js';
+import { CFG, LIGHT_PRESETS, WEATHER, ASSETS, CAR_SPECS,
+         WATER, MOUNTAIN, REGION, LIDAR, RL_BOUNDS,
+         PARTICLES, MODES } from './core/config.js';
+import { streamQueue, queuedJob, capTexture, capMaterialTextures,
+         acquireTexDecode, releaseTexDecode } from './core/stream.js';
+import { createProctex } from './render/proctex.js';
 import { headingAt, curvatureAt, elevationAt, gradeAt,
          turnLimit, clampInside, PathRing, groundOffset }
   from './world/route.js';
@@ -30,6 +35,22 @@ import { KalmanFilter, ObstacleTracker, predictAt }
 // 1. Configuration, renderer, lighting and environment
 // ================================================================
 
+// Constant groups destructured under their original names so the
+// simulation code below reads unchanged; the tables themselves
+// live in core/config.js for tuning.
+const { rows: WATER_ROWS, cols: WATER_COLS,
+        cellS: WATER_CELL_S, halfW: WATER_HALF_W } = WATER;
+const { span: REGION_SPAN, inner: REGION_INNER,
+        half: REGION_HALF, grid: REGION_GRID } = REGION;
+const { spacing: MOUNTAIN_SPACING, count: MOUNTAIN_COUNT,
+        scale: MOUNTAIN_SCALE } = MOUNTAIN;
+const { angles: LIDAR_ANGLES, range: LIDAR_RANGE } = LIDAR;
+const { density: DENSITY_MODES, reflection: reflectionModes,
+        views: VIEWS, quality: QUALITY_NAMES } = MODES;
+const rainCount = PARTICLES.rain;
+const sprayCount = PARTICLES.spray;
+const START_S = CFG.startS;
+const textureCap = CFG.textureCap;
 
 let width = innerWidth;
 let height = innerHeight;
@@ -214,7 +235,7 @@ const starMaterial = new THREE.PointsMaterial({
   color: 0xd8e6ff, size: 1.6, sizeAttenuation: false,
   transparent: true, opacity: 0.1, depthWrite: false, fog: false
 });
-const starPositions = new Float32Array(900 * 3);
+const starPositions = new Float32Array(PARTICLES.stars * 3);
 for (let i = 0; i < 900; i++) {
   const a = Math.random() * TAU;
   const y = 0.06 + Math.random() * 0.94;
@@ -236,352 +257,12 @@ scene.add(starDome);
 // ================================================================
 
 
-function canvasTexture(size, draw, srgb = true) {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  draw(canvas.getContext('2d'), size);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  if (srgb) texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
-const asphaltTexture = canvasTexture(512, (ctx, size) => {
-  const rand = randomGenerator(521);
-  const image = ctx.createImageData(size, size);
-  for (let i = 0; i < image.data.length; i += 4) {
-    const n = 73 + rand() * 35;
-    image.data[i] = n * 0.88;
-    image.data[i + 1] = n * 0.95;
-    image.data[i + 2] = n;
-    image.data[i + 3] = 255;
-  }
-  ctx.putImageData(image, 0, 0);
-  // Longitudinal aggregate and hairline seams soften repeating tiles.
-  ctx.globalAlpha = 0.12;
-  for (let i = 0; i < 2100; i++) {
-    const x = rand() * size;
-    const y = rand() * size;
-    ctx.fillStyle = rand() > 0.5 ? '#b7c5cd' : '#050f18';
-    ctx.fillRect(x, y, 0.5 + rand() * 1.7, rand() * 5 + 0.6);
-  }
-  ctx.globalAlpha = 1;
-});
-
-const wetRoughness = canvasTexture(512, (ctx, size) => {
-  const rand = randomGenerator(991);
-  ctx.fillStyle = '#c2c2c2';
-  ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 65; i++) {
-    const x = rand() * size;
-    const y = rand() * size;
-    const r = 25 + rand() * 100;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, 'rgba(8,8,8,.97)');
-    g.addColorStop(1, 'rgba(80,80,80,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(x - r, y - r, r * 2, r * 2);
-  }
-}, false);
-
-const soilTexture = canvasTexture(256, (ctx, size) => {
-  const rand = randomGenerator(6081);
-  const image = ctx.createImageData(size, size);
-  for (let i = 0; i < image.data.length; i += 4) {
-    const n = 45 + rand() * 65;
-    image.data[i] = n * 0.64;
-    image.data[i + 1] = n * 0.78;
-    image.data[i + 2] = n * 0.61;
-    image.data[i + 3] = 255;
-  }
-  ctx.putImageData(image, 0, 0);
-});
-
-const puddleMask = canvasTexture(256, (ctx, size) => {
-  const rand = randomGenerator(801);
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, size, size);
-  ctx.save();
-  ctx.translate(size / 2, size / 2);
-  ctx.scale(0.95, 0.58);
-  const grad = ctx.createRadialGradient(0, 0, 10, 0, 0, 125);
-  grad.addColorStop(0, '#ffffff');
-  grad.addColorStop(0.48, '#f8f8f8');
-  grad.addColorStop(0.73, '#aaaaaa');
-  grad.addColorStop(0.90, '#171717');
-  grad.addColorStop(1, '#000000');
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  for (let j = 0; j <= 64; j++) {
-    const a = j / 64 * Math.PI * 2;
-    const r = 111 + 5 * Math.sin(a * 7) + 7 * Math.sin(a * 11 + 1.3);
-    const x = Math.cos(a) * r;
-    const y = Math.sin(a) * r;
-    if (!j) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}, false);
-puddleMask.wrapS = puddleMask.wrapT = THREE.ClampToEdgeWrapping;
-
-const carbonTexture = canvasTexture(64, (ctx, size) => {
-  ctx.fillStyle = '#151c23';
-  ctx.fillRect(0, 0, size, size);
-  for (let y = 0; y < size; y += 8) {
-    for (let x = 0; x < size; x += 8) {
-      ctx.fillStyle = ((x + y) / 8) % 2 ? '#303a42' : '#1b242c';
-      ctx.fillRect(x, y, 7, 7);
-      ctx.fillStyle = 'rgba(130,150,165,.12)';
-      ctx.fillRect(x, y, 2, 7);
-    }
-  }
-});
-carbonTexture.repeat.set(5, 5);
-
-const contactTexture = canvasTexture(128, (ctx, size) => {
-  const g = ctx.createRadialGradient(
-    size / 2, size / 2, 4, size / 2, size / 2, size / 2
-  );
-  g.addColorStop(0, 'rgba(0,0,0,.86)');
-  g.addColorStop(0.4, 'rgba(0,0,0,.55)');
-  g.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-});
-contactTexture.wrapS = contactTexture.wrapT = THREE.ClampToEdgeWrapping;
-
-// Irregular wet-patch mask for the planar road reflection: bright
-// streaks and blobs mirror the scene, the rest stays diffuse asphalt.
-const mirrorMask = canvasTexture(256, (ctx, size) => {
-  const rand = randomGenerator(4177);
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 46; i++) {
-    const x = rand() * size;
-    const y = rand() * size;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(9 + rand() * 30, 24 + rand() * 105);
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-    g.addColorStop(0, 'rgba(255,255,255,.95)');
-    g.addColorStop(0.55, 'rgba(210,210,210,.55)');
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(0, 0, 1, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-  // Wheel-track wet lines running along the tile.
-  ctx.globalAlpha = 0.28;
-  for (const lx of [0.30, 0.68]) {
-    const g = ctx.createLinearGradient(
-      lx * size - 15, 0, lx * size + 15, 0
-    );
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(0.5, 'rgba(235,235,235,.9)');
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(lx * size - 15, 0, 30, size);
-  }
-  ctx.globalAlpha = 1;
-}, false);
-
-// Soft alpha blotches for the low-lying mist sheets.
-const mistTexture = canvasTexture(256, (ctx, size) => {
-  const rand = randomGenerator(9053);
-  ctx.clearRect(0, 0, size, size);
-  for (let i = 0; i < 64; i++) {
-    const x = rand() * size;
-    const y = rand() * size;
-    const r = 16 + rand() * 72;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, 'rgba(255,255,255,.17)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(x - r, y - r, r * 2, r * 2);
-  }
-});
-
-// Crossed-card grass tufts for the road verges.
-const grassTexture = canvasTexture(64, (ctx, size) => {
-  const rand = randomGenerator(2213);
-  ctx.clearRect(0, 0, size, size);
-  for (let i = 0; i < 26; i++) {
-    const x = 4 + rand() * (size - 8);
-    const top = size * (0.02 + rand() * 0.24);
-    const grad = ctx.createLinearGradient(0, size, 0, top);
-    grad.addColorStop(0, '#25311f');
-    grad.addColorStop(1, '#63755a');
-    ctx.strokeStyle = grad;
-    ctx.lineWidth = 1.1 + rand() * 1.8;
-    ctx.beginPath();
-    ctx.moveTo(x, size);
-    ctx.quadraticCurveTo(
-      x + (rand() - 0.5) * 10, size * 0.55,
-      x + (rand() - 0.5) * 16, top
-    );
-    ctx.stroke();
-  }
-});
-const grassCardA = new THREE.PlaneGeometry(1, 1);
-grassCardA.translate(0, 0.5, 0);
-const grassGeometry = BufferGeometryUtils.mergeGeometries([
-  grassCardA, grassCardA.clone().rotateY(Math.PI / 2)
-]);
-
-// Fern fronds radiating from a base; wider arched strokes than grass.
-const fernTexture = canvasTexture(96, (ctx, size) => {
-  const rand = randomGenerator(4417);
-  ctx.clearRect(0, 0, size, size);
-  for (let i = 0; i < 9; i++) {
-    const angle = (i / 9 - 0.5) * 2.1 + (rand() - 0.5) * 0.2;
-    const length = size * (0.55 + rand() * 0.4);
-    const tipX = size / 2 + Math.sin(angle) * length;
-    const tipY = size - Math.cos(angle) * length;
-    const midX = size / 2 + Math.sin(angle) * length * 0.45;
-    const midY = size - Math.cos(angle) * length * 0.62;
-    for (let t = 0.2; t < 1; t += 0.09) {
-      const bx = lerp(lerp(size / 2, midX, t), lerp(midX, tipX, t), t);
-      const by = lerp(lerp(size, midY, t), lerp(midY, tipY, t), t);
-      const leafLen = (1 - t) * size * 0.11;
-      ctx.strokeStyle = `rgba(${52 + rand() * 26 | 0},${
-        92 + rand() * 34 | 0},${44 + rand() * 20 | 0},.92)`;
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.moveTo(bx - leafLen, by - leafLen * 0.4);
-      ctx.lineTo(bx, by);
-      ctx.lineTo(bx + leafLen, by - leafLen * 0.4);
-      ctx.stroke();
-    }
-  }
-});
-const fernCardA = new THREE.PlaneGeometry(1.3, 1);
-fernCardA.translate(0, 0.45, 0);
-const fernGeometry = BufferGeometryUtils.mergeGeometries([
-  fernCardA,
-  fernCardA.clone().rotateY(Math.PI / 3),
-  fernCardA.clone().rotateY(-Math.PI / 3)
-]);
-
-const materials = {
-  road: new THREE.MeshPhysicalMaterial({
-    color: 0x8297a9,
-    map: asphaltTexture,
-    bumpMap: asphaltTexture,
-    bumpScale: 0.013,
-    roughnessMap: wetRoughness,
-    roughness: 0.61,
-    metalness: 0.14,
-    clearcoat: 1,
-    clearcoatRoughness: 0.085,
-    envMapIntensity: 2.0
-  }),
-  ground: new THREE.MeshStandardMaterial({
-    color: 0x526352, map: soilTexture, roughness: 0.99,
-    vertexColors: true, flatShading: true
-  }),
-  verge: new THREE.MeshStandardMaterial({
-    color: 0x6a5f52, map: soilTexture, roughness: 0.98,
-    vertexColors: true, flatShading: true
-  }),
-  grass: new THREE.MeshStandardMaterial({
-    map: grassTexture, alphaTest: 0.42, roughness: 0.95,
-    side: THREE.DoubleSide
-  }),
-  fern: new THREE.MeshStandardMaterial({
-    map: fernTexture, alphaTest: 0.4, roughness: 0.96,
-    side: THREE.DoubleSide
-  }),
-  rock: new THREE.MeshStandardMaterial({
-    color: 0x374348, roughness: 0.98, flatShading: true
-  }),
-  // Distant massif silhouettes — kept dark and matte so fog and the
-  // atmospheric sky haze do the photoreal work.
-  mountain: new THREE.MeshStandardMaterial({
-    color: 0x3d4a55, roughness: 1.0, metalness: 0.0, flatShading: true
-  }),
-  puddle: new THREE.MeshPhysicalMaterial({
-    color: 0x7392a5, metalness: 0.28, roughness: 0.09,
-    clearcoat: 1, clearcoatRoughness: 0.035,
-    alphaMap: puddleMask, transparent: true, opacity: 0.32,
-    depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2,
-    envMapIntensity: 2.4, side: THREE.DoubleSide
-  }),
-  marking: new THREE.MeshStandardMaterial({
-    vertexColors: true, roughness: 0.45, metalness: 0.05
-  }),
-  foliage: new THREE.MeshStandardMaterial({
-    color: 0xffffff, roughness: 1, flatShading: true, side: THREE.DoubleSide
-  }),
-  carbon: new THREE.MeshStandardMaterial({
-    color: 0x5d6972, map: carbonTexture, roughness: 0.42, metalness: 0.55
-  }),
-  rubber: new THREE.MeshStandardMaterial({
-    color: 0x101316, roughness: 0.82, metalness: 0.03
-  }),
-  rim: new THREE.MeshStandardMaterial({
-    color: 0x89949e, metalness: 0.94, roughness: 0.22
-  }),
-  darkMetal: new THREE.MeshStandardMaterial({
-    color: 0x20272d, metalness: 0.84, roughness: 0.33
-  }),
-  contact: new THREE.MeshBasicMaterial({
-    map: contactTexture,
-    transparent: true,
-    opacity: 0.85,
-    depthWrite: false,
-    polygonOffset: true,
-    polygonOffsetFactor: -2
-  })
-};
-
-// ================================================================
-// 2a. Asset streaming: a small priority queue with a concurrent
-// request cap so heavy assets arrive progressively instead of all
-// at once. Failed jobs are counted, never fatal.
-// ================================================================
-
-const streamQueue = {
-  pending: [], keys: new Set(), active: 0,
-  cap: MOBILE ? 2 : 3, done: 0, failed: 0,
-  enqueue(key, priority, task) {
-    if (this.keys.has(key)) return;
-    this.keys.add(key);
-    this.pending.push({ key, priority, task });
-    this.pending.sort((a, b) => a.priority - b.priority);
-    this.pump();
-  },
-  pump() {
-    while (this.active < this.cap && this.pending.length) {
-      const job = this.pending.shift();
-      this.active++;
-      Promise.resolve()
-        .then(job.task)
-        .then(() => { this.done++; })
-        .catch(() => { this.failed++; })
-        .finally(() => { this.active--; this.pump(); });
-    }
-  }
-};
-// Same key -> same promise, so duplicate in-flight requests share one
-// load. Once settled the entry is dropped: retaining resolved job
-// values would pin every decoded GLB (scene, parser, geometry and
-// full-res images) for the whole session.
-const streamJobs = new Map();
-function queuedJob(key, priority, task) {
-  if (streamJobs.has(key)) return streamJobs.get(key);
-  const job = new Promise((resolve, reject) => {
-    streamQueue.enqueue(key, priority,
-      () => task().then(resolve, reject));
-  });
-  streamJobs.set(key, job);
-  const clean = () => streamJobs.delete(key);
-  job.then(clean, clean);
-  return job;
-}
+const PROC = createProctex(renderer);
+const { asphaltTexture, wetRoughness, soilTexture,
+        puddleMask, carbonTexture, contactTexture, mirrorMask,
+        mistTexture, grassTexture, grassGeometry, fernTexture,
+        fernGeometry, impostorTexture, impostorGeometry,
+        lightSpillTexture, lightHaloTexture, materials } = PROC;
 
 // Mesh decoders for compressed GLB payloads; plain .glb files load
 // unchanged. Decoder binaries stream from the same pinned CDN.
@@ -623,59 +304,6 @@ const ktx2Files = (ktx2Loader
 ).then(manifest => new Set(
   Object.values((manifest && manifest.ktx2) || {}).map(e => e.file)
 ));
-
-// Raster textures arrive uncompressed: a 2048x2048 map holds ~21 MB
-// of GPU memory each, and the asset sets push the total toward 1 GB.
-// Downscaling oversized images to CFG.textureCap through a canvas
-// keeps the look while quartering the footprint. The original decode
-// buffers are released once the upload happens.
-const textureCap = MOBILE ? 768 : 1024;
-function capTexture(texture, cap = textureCap) {
-  const image = texture.image;
-  if (!image || texture.userData.capped) return texture;
-  texture.userData.capped = true;
-  const w = image.width, h = image.height;
-  const longest = Math.max(w, h);
-  if (!w || !h || longest <= cap) return texture;
-  const scale = cap / longest;
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(w * scale));
-  canvas.height = Math.max(1, Math.round(h * scale));
-  canvas.getContext('2d')
-    .drawImage(image, 0, 0, canvas.width, canvas.height);
-  // Release the decoded source: ImageBitmap.close() frees the raster
-  // buffer synchronously; HTMLImageElement drops on GC once no
-  // texture references it anymore.
-  if (typeof image.close === 'function') image.close();
-  texture.image = canvas;
-  texture.needsUpdate = true;
-  return texture;
-}
-
-// Every texture slot on a GLB material (GLTFLoader decodes embedded
-// images to full resolution regardless of mesh size on screen).
-function capMaterialTextures(material, cap = textureCap) {
-  for (const slot of [
-    'map', 'normalMap', 'roughnessMap', 'metalnessMap',
-    'aoMap', 'emissiveMap', 'alphaMap', 'bumpMap'
-  ]) {
-    if (material[slot]) capTexture(material[slot], cap);
-  }
-}
-
-// Raster decodes bypass the mesh stream queue, so parallel
-// Promise.all() batches spike the JS heap with image buffers.
-// A small semaphore keeps at most four decodes in flight.
-let texDecodeActive = 0;
-const texDecodePending = [];
-function acquireTexDecode() {
-  if (texDecodeActive < 4) { texDecodeActive++; return null; }
-  return new Promise(resolve => texDecodePending.push(resolve));
-}
-function releaseTexDecode() {
-  const next = texDecodePending.shift();
-  if (next) next(); else texDecodeActive--;
-}
 
 function pbrTexture(url, srgb, cap = textureCap) {
   const ktx2url = url.replace(/\.(jpg|jpeg|png|webp)$/i, '.ktx2');
@@ -851,10 +479,6 @@ loadPBRTextures();
 // toward the shoulders and the tires displace it into wakes.
 // ================================================================
 
-const WATER_ROWS = 128;              // 4 m cells -> 512 m window
-const WATER_COLS = 14;               // 1.2 m cells over |x| <= 8.4
-const WATER_CELL_S = 4;
-const WATER_HALF_W = 8.4;
 const waterDepth = new Float32Array(WATER_ROWS * WATER_COLS);
 const waterRowId = new Int32Array(WATER_ROWS).fill(-1);
 const waterBytes = new Uint8Array(WATER_ROWS * WATER_COLS);
@@ -1727,7 +1351,6 @@ async function loadForestGLB() {
   // Reduced-detail tiers stream in after LOD0; they rebuild the
   // instanced sets in place. Entries stay aligned with the roster
   // by url index — species that already had an entry keep it.
-  const keepBase = forestParts.length - species.length;
   for (const [tier, suffix] of [[0, '_lod1'], [1, '_lod2']]) {
     const lods = await Promise.all(results.map((parts, i) => {
       if (!parts) return Promise.resolve(null);
@@ -1744,9 +1367,14 @@ async function loadForestGLB() {
     // Filter by the same predicate as `species` to stay aligned.
     const aligned = lods.filter((_, i) => results[i]);
     species.forEach((_, si) => {
-      forestLods[tier][keepBase + si] = aligned[si];
+      forestLods[tier][si] = aligned[si];
     });
-    rebuildActiveChunks();
+    if (aligned.some(Boolean)) {
+      for (const chunk of chunks) {
+        if (chunk.index >= 0) chunk.initGlbForest();
+      }
+      rebuildActiveChunks();
+    }
   }
 }
 
@@ -1759,9 +1387,6 @@ async function loadForestGLB() {
 // route is endless, so mountains ride the same streaming window as
 // chunks and hold world poses that survive the origin rebase.
 // ================================================================
-const MOUNTAIN_SPACING = 640;
-const MOUNTAIN_COUNT = 6;
-const MOUNTAIN_SCALE = 0.55;
 let mountainGeometry = null;
 const massifs = [];
 
@@ -2076,42 +1701,6 @@ async function loadNature() {
 // Missing files skip silently — procedural bodies remain.
 // spec.yaw flips nose-vs-tail (0 or PI) after the loader puts the
 // long axis on Z with +X->+Z convention (-PI/2 when model runs on X).
-const CAR_SPECS = [
-  { url: ASSETS.playerAndTrafficCar, yaw: 0, length: 4.55,
-    wheelRe: /^(fl|fr|rl|rr)[_ ]?wheel$/i,
-    corner: m => m[1].toUpperCase(), front: k => k[0] === 'F',
-    paint: /body/i },
-  { url: ASSETS.trafficCarModels[0], yaw: 0, length: 4.61,
-    wheelRe: /^M_Wheel(F|B)(L|R)/i,
-    corner: m => (m[1] + m[2]).toUpperCase(), front: k => k[0] === 'F',
-    paint: /paintjob/i,
-    // The Mustang OBJ ships one flat gray for every part — re-dress
-    // materials by name so chrome, glass, tires and lamps read apart.
-    fixup: [
-      [/chrome|rim|grill|exhaust|mirror/i,
-       { metalness: 0.95, roughness: 0.18, color: 0xdfe2e6 }],
-      [/tire|brakepad|blacktrim|_dark/i,
-       { roughness: 0.92, color: 0x141518 }],
-      [/windshield|glass/i,
-       { metalness: 0.4, roughness: 0.08, color: 0x101c24,
-         transparent: true, opacity: 0.55 }],
-      [/headlight|turnsignal/i,
-       { roughness: 0.25, color: 0xf0ead0, emissive: 0x35301e }],
-      [/tailight|taillight/i,
-       { roughness: 0.3, color: 0x7d1a12, emissive: 0x2a0805 }]
-    ] },
-  { url: ASSETS.trafficCarModels[1], yaw: 0, length: 4.06,
-    wheelRe: null, paint: 'largest',
-    // Beetle VRay mats are all pure black; lambert6SG (the only gray
-    // one) is the brightwork/interior set — give it a chrome finish.
-    fixup: [
-      [/lambert6sg/i,
-       { metalness: 0.9, roughness: 0.28, color: 0xc9ccd2 }],
-      [/vray|initialshading/i,
-       { roughness: 0.5, metalness: 0.35, color: 0x2a2d33 }]
-    ] }
-];
-
 // Tint the material covering the most triangles — for merged-mesh
 // models with opaque names (the Beetle's VRayMtl*SG set), the body
 // shell is by far the biggest primitive.
@@ -2426,37 +2015,11 @@ scene.add(mountains);
 // procedural fallback keeps the world alive without them.
 // ================================================================
 
-const REGION_SPAN = 256;
-const REGION_INNER = 86;       // overlaps the chunk terrain edge
-const REGION_HALF = 320;
-const REGION_GRID = 17;
 const regionDescCache = new Map();
 const regionStats = { active: 0, loading: 0, lod: [0, 0, 0] };
 let worldMode = 0;             // 0 AUTO, 1 HIGH, 2 ECO
 let worldDensity = 1;
 
-// Conifer silhouette card for distant forest impostors.
-const impostorTexture = canvasTexture(96, (ctx, size) => {
-  ctx.clearRect(0, 0, size, size);
-  ctx.fillStyle = 'rgba(14,30,22,.96)';
-  ctx.fillRect(size * 0.46, size * 0.72, size * 0.08, size * 0.28);
-  for (let i = 0; i < 5; i++) {
-    const w = size * (0.44 - i * 0.058);
-    const top = size * (0.06 + i * 0.14);
-    const base = top + size * 0.22;
-    ctx.beginPath();
-    ctx.moveTo(size / 2, top);
-    ctx.lineTo(size / 2 - w, base);
-    ctx.lineTo(size / 2 + w, base);
-    ctx.closePath();
-    ctx.fill();
-  }
-});
-const impostorCard = new THREE.PlaneGeometry(1, 1);
-impostorCard.translate(0, 0.5, 0);
-const impostorGeometry = BufferGeometryUtils.mergeGeometries([
-  impostorCard, impostorCard.clone().rotateY(Math.PI / 2)
-]);
 const regionMaterial = new THREE.MeshStandardMaterial({
   vertexColors: true, roughness: 1, flatShading: true, color: 0x54655a
 });
@@ -2543,7 +2106,7 @@ function fetchDescriptor(region, i) {
     .then(desc => {
       regionStats.loading--;
       if (ctl.signal.aborted) return;
-      if (regionDescCache.size > 48) {
+      if (regionDescCache.size >= REGION.cacheLimit) {
         regionDescCache.delete(
           regionDescCache.keys().next().value);
       }
@@ -2775,7 +2338,7 @@ class Region {
   }
 }
 
-const regionPool = Array.from({ length: 8 }, () => new Region());
+const regionPool = Array.from({ length: REGION.pool }, () => new Region());
 const regionFrustum = new THREE.Frustum();
 const regionFrustumMatrix = new THREE.Matrix4();
 const regionSphere = new THREE.Sphere(new THREE.Vector3(), 720);
@@ -2838,12 +2401,11 @@ function setWorldDensity(v) {
   worldDensity = v;
   refreshRegions();
 }
-const worldModes = ['AUTO', 'HIGH', 'ECO'];
 function cycleWorldMode() {
-  worldMode = (worldMode + 1) % worldModes.length;
+  worldMode = (worldMode + 1) % DENSITY_MODES.length;
   worldDensity = worldMode === 2 ? 0.5 : 1;
   refreshRegions();
-  toast(`WORLD ${worldModes[worldMode]}`, 1400);
+  toast(`WORLD ${DENSITY_MODES[worldMode]}`, 1400);
 }
 
 // ================================================================
@@ -2943,36 +2505,6 @@ function addContact(parent, x, z, sx, sz) {
   parent.add(mesh);
   return mesh;
 }
-
-const lightSpillTexture = canvasTexture(256, (ctx, size) => {
-  const g = ctx.createRadialGradient(size / 2, size / 2, 1,
-                                      size / 2, size / 2, size / 2);
-  g.addColorStop(0, 'rgba(255,255,255,0.82)');
-  g.addColorStop(0.17, 'rgba(255,255,255,0.64)');
-  g.addColorStop(0.47, 'rgba(255,255,255,0.18)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  ctx.globalCompositeOperation = 'destination-out';
-  // Thin water-runoff bands break up the projected light uniformly.
-  for (let i = 0; i < 42; i++) {
-    const rand = randomGenerator(i * 3571 + 4002);
-    ctx.fillStyle = 'rgba(0,0,0,.08)';
-    ctx.fillRect(rand() * size, rand() * size, 1, rand() * 25);
-  }
-});
-lightSpillTexture.wrapS = lightSpillTexture.wrapT = THREE.ClampToEdgeWrapping;
-
-const lightHaloTexture = canvasTexture(128, (ctx, size) => {
-  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.12, 'rgba(255,255,255,.6)');
-  g.addColorStop(0.5, 'rgba(255,255,255,.12)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-});
-lightHaloTexture.wrapS = lightHaloTexture.wrapT = THREE.ClampToEdgeWrapping;
 
 function makeLightSpill(parent, color, x, z, sx, sz, opacity) {
   const material = new THREE.MeshBasicMaterial({
@@ -3307,7 +2839,6 @@ const roadCars = rivals.concat(traffic);
 // 5. Rain and tire spray: fixed-size GPU particle systems
 // ================================================================
 
-const rainCount = MOBILE ? 700 : 1450;
 const rainPositions = new Float32Array(rainCount * 2 * 3);
 const rainEnds = new Float32Array(rainCount * 2);
 const rainRandom = randomGenerator(31337);
@@ -3376,7 +2907,6 @@ const rain = new THREE.LineSegments(rainGeometry, rainMaterial);
 rain.frustumCulled = false;
 scene.add(rain);
 
-const sprayCount = MOBILE ? 90 : 180;
 const sprayPositions = new Float32Array(sprayCount * 3);
 for (let i = 0; i < sprayCount; i++) {
   sprayPositions.set([rainRandom(), rainRandom(), i & 1 ? 1 : -1], i * 3);
@@ -3647,7 +3177,6 @@ function ensureSSRPass() {
   return ssrPass;
 }
 
-const reflectionModes = ['SSR', 'PLANAR', 'OFF'];
 let reflectionMode = 'PLANAR';
 
 // ================================================================
@@ -3658,7 +3187,6 @@ let reflectionMode = 'PLANAR';
 // inertia, understeer and controllable handbrake oversteer.
 // ================================================================
 
-const START_S = 32;
 const state = {
   s: START_S,
   x: 0,
@@ -3748,7 +3276,6 @@ function togglePause() {
 }
 
 const cameraAim = new THREE.Vector3();
-const VIEWS = ['CHASE', 'COCKPIT', 'ORBIT'];
 function toggleCamera() {
   if (!started) return;
   const entering = orbitMode;
@@ -3960,13 +3487,11 @@ function setQuality(mode) {
 }
 $('quality').onclick = () => {
   setQuality(qualityMode + 1);
-  toast(['ADAPTIVE RENDERING', 'CINEMATIC POST FX',
-         'PERFORMANCE RENDERING'][qualityMode], 1400);
+  toast(QUALITY_NAMES[qualityMode], 1400);
 };
 
 // Environment density: AUTO follows frame time, HIGH forces full
 // undergrowth, ECO trims ferns/grass/rocks to half density.
-const envModes = ['AUTO', 'HIGH', 'ECO'];
 let envMode = 0;
 function setEnvDensity(v) {
   if (v === envDensity) return;
@@ -3974,9 +3499,9 @@ function setEnvDensity(v) {
   rebuildActiveChunks();
 }
 function cycleEnvMode() {
-  envMode = (envMode + 1) % envModes.length;
+  envMode = (envMode + 1) % DENSITY_MODES.length;
   setEnvDensity(envMode === 2 ? 0.55 : 1);
-  toast(`ENVIRONMENT ${envModes[envMode]}`, 1400);
+  toast(`ENVIRONMENT ${DENSITY_MODES[envMode]}`, 1400);
 }
 
 // ================================================================
@@ -3985,8 +3510,6 @@ function cycleEnvMode() {
 // from corner curvature and obstacle range.
 // ================================================================
 
-const LIDAR_ANGLES = [-78, -42, -14, 14, 42, 78];
-const LIDAR_RANGE = 60;
 const lidarRanges = new Float32Array(LIDAR_ANGLES.length)
   .fill(LIDAR_RANGE);
 let autopilotOn = false;
@@ -4100,11 +3623,6 @@ const rl = {
   // metrics for the panel
   hits: 0, passes: 0, speedSum: 0, frames: 0,
   prevHit: 0, leadCar: null, ttc: 0
-};
-const RL_BOUNDS = {
-  latGain: [0.3, 0.85],
-  followK: [0.3, 0.9],
-  margin: [0.78, 1.0]
 };
 
 function rlExplore() {
@@ -4824,7 +4342,7 @@ function updateWorldEffects(time) {
 const lensCanvas = $('lens-rain');
 const lensCtx = lensCanvas.getContext('2d', { alpha: true });
 const lensRandom = randomGenerator(44993);
-const lensDroplets = Array.from({ length: MOBILE ? 34 : 65 }, () => ({
+const lensDroplets = Array.from({ length: PARTICLES.lensDrops }, () => ({
   x: lensRandom(),
   y: lensRandom(),
   r: 0.7 + Math.pow(lensRandom(), 3) * 5.4,
@@ -5282,6 +4800,7 @@ if (urlParams.has('debug') || urlParams.has('autotest')) {
     chunks, lidarRanges, camera, controls, scene, rl, tracker,
     lidarSmooth,
     get forestParts() { return forestParts; },
+    forestLods,
     get reflectionMode() { return reflectionMode; }
   };
 }

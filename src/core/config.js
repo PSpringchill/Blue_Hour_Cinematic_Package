@@ -28,7 +28,77 @@ export const CFG = {
   // Cars further than this along the route swap to their decimated
   // *_lod.glb model (86k vs 717k tris on the Mustang); the player
   // car always renders full detail.
-  carLodDistance: MOBILE ? 95 : 135
+  carLodDistance: MOBILE ? 95 : 135,
+
+  // Spawn distance along the route for the player start.
+  startS: 32,
+
+  // Largest image edge uploaded to the GPU; bigger rasters are
+  // downscaled through a canvas (see core/stream.js capTexture).
+  textureCap: MOBILE ? 768 : 1024,
+
+  // Max concurrent jobs in the streaming priority queue.
+  streamConcurrency: MOBILE ? 2 : 3
+};
+
+// Standing-water simulation window. A scrolling grid keeps water
+// depth around the car without simulating the whole route.
+export const WATER = {
+  rows: 128,      // 4 m cells -> 512 m window
+  cols: 14,       // 1.2 m cells over |x| <= halfW
+  cellS: 4,
+  halfW: 8.4
+};
+
+// Recycled backdrop massifs (scenery/mountain.glb): slots flank the
+// route at a fixed spacing and are re-posed as the world advances.
+export const MOUNTAIN = {
+  spacing: 640,
+  count: 6,
+  scale: 0.55
+};
+
+// 256 m far-terrain region streaming. The pool size bounds live
+// Region objects; cacheLimit bounds parsed descriptor retention.
+export const REGION = {
+  span: 256,
+  inner: 86,      // overlaps the chunk terrain edge
+  half: 320,
+  grid: 17,
+  pool: 8,
+  cacheLimit: 48
+};
+
+// Autopilot sensor fan: ray angles (deg from forward) and reach (m).
+export const LIDAR = {
+  angles: [-78, -42, -14, 14, 42, 78],
+  range: 60
+};
+
+// Online-learner parameter clamps — rlExplore() re-samples each
+// controller gain inside these bounds.
+export const RL_BOUNDS = {
+  latGain: [0.3, 0.85],
+  followK: [0.3, 0.9],
+  margin: [0.78, 1.0]
+};
+
+// Particle system budgets.
+export const PARTICLES = {
+  rain: MOBILE ? 700 : 1450,
+  spray: MOBILE ? 90 : 180,
+  stars: 900,
+  lensDrops: MOBILE ? 34 : 65
+};
+
+// Cycle lists for the runtime toggles. world/env share one density
+// list — the two toggles were identical arrays kept in sync.
+export const MODES = {
+  reflection: ['SSR', 'PLANAR', 'OFF'],
+  density: ['AUTO', 'HIGH', 'ECO'],
+  views: ['CHASE', 'COCKPIT', 'ORBIT'],
+  quality: ['ADAPTIVE RENDERING', 'CINEMATIC POST FX',
+            'PERFORMANCE RENDERING']
 };
 
 // Route shape: layered sine tables.
@@ -108,3 +178,44 @@ export const ASSETS = {
   impostorAtlas: 'assets/textures/impostor_atlas.png',
   hdri: 'assets/hdri/dikhololo_night_1k.hdr'
 };
+
+// Vehicle roster: player + rivals use the first entry, traffic picks
+// from the whole pool. Per-model fields describe how to read each
+// scan: wheelRe/corner/front locate the four wheels for spin+steer,
+// paint selects the body material to tint, fixup re-dresses
+// nameless materials (all-black VRay, single gray OBJ) by name.
+export const CAR_SPECS = [
+  { url: ASSETS.playerAndTrafficCar, yaw: 0, length: 4.55,
+    wheelRe: /^(fl|fr|rl|rr)[_ ]?wheel$/i,
+    corner: m => m[1].toUpperCase(), front: k => k[0] === 'F',
+    paint: /body/i },
+  { url: ASSETS.trafficCarModels[0], yaw: 0, length: 4.61,
+    wheelRe: /^M_Wheel(F|B)(L|R)/i,
+    corner: m => (m[1] + m[2]).toUpperCase(), front: k => k[0] === 'F',
+    paint: /paintjob/i,
+    // The Mustang OBJ ships one flat gray for every part — re-dress
+    // materials by name so chrome, glass, tires and lamps read apart.
+    fixup: [
+      [/chrome|rim|grill|exhaust|mirror/i,
+       { metalness: 0.95, roughness: 0.18, color: 0xdfe2e6 }],
+      [/tire|brakepad|blacktrim|_dark/i,
+       { roughness: 0.92, color: 0x141518 }],
+      [/windshield|glass/i,
+       { metalness: 0.4, roughness: 0.08, color: 0x101c24,
+         transparent: true, opacity: 0.55 }],
+      [/headlight|turnsignal/i,
+       { roughness: 0.25, color: 0xf0ead0, emissive: 0x35301e }],
+      [/tailight|taillight/i,
+       { roughness: 0.3, color: 0x7d1a12, emissive: 0x2a0805 }]
+    ] },
+  { url: ASSETS.trafficCarModels[1], yaw: 0, length: 4.06,
+    wheelRe: null, paint: 'largest',
+    // Beetle VRay mats are all pure black; lambert6SG (the only gray
+    // one) is the brightwork/interior set — give it a chrome finish.
+    fixup: [
+      [/lambert6sg/i,
+       { metalness: 0.9, roughness: 0.28, color: 0xc9ccd2 }],
+      [/vray|initialshading/i,
+       { roughness: 0.5, metalness: 0.35, color: 0x2a2d33 }]
+    ] }
+];
