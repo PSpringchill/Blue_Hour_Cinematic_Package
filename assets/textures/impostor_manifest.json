@@ -1,0 +1,5 @@
+{
+  "generated": "empty",
+  "note": "install_impostors.py writes species: 4 plus the atlas file when a scanned 4-cell atlas is installed; species 0 keeps the procedural impostor card.",
+  "species": 0
+}

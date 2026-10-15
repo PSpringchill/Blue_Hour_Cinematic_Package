@@ -1,0 +1,5 @@
+{
+  "generated": "empty",
+  "note": "install_ktx2.py populates 'ktx2' when Basis-compressed textures are installed; an empty map means raster fallbacks are used.",
+  "ktx2": {}
+}
