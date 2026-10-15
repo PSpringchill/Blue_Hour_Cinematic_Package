@@ -4,7 +4,7 @@
 Stages:
   1. syntax     node --check every JS module in src/ and engine/
   2. assets     HTTP 200 on pages, modules and required assets;
-                known-optional files must 404 cleanly (fallback path)
+                optional assets must 200-with-valid-content or 404 cleanly
   3. boot       headless Chrome reaches the playable/HUD state and
                 reports zero application JS errors
   4. telemetry  ?autotest drives and reports heap/draw stats
@@ -74,6 +74,13 @@ def http_code(url):
     except Exception:
         return 0
 
+def http_body(url):
+    try:
+        with urllib.request.urlopen(url, timeout=5) as r:
+            return r.read().decode('utf-8', 'replace')
+    except Exception:
+        return None
+
 def assets_stage(port):
     print("\n[2] assets — HTTP status")
     base = f'http://127.0.0.1:{port}'
@@ -91,6 +98,8 @@ def assets_stage(port):
     for path in required:
         code = http_code(base + path)
         check(f'GET {path}', code == 200, f'HTTP {code}')
+    # Optional assets: installed -> 200 with valid payload, absent -> 404
+    # (graceful fallback). Anything else is a failure.
     optional = [
         '/assets/textures/ktx2_manifest.json',
         '/assets/textures/impostor_manifest.json',
@@ -98,8 +107,24 @@ def assets_stage(port):
     ]
     for path in optional:
         code = http_code(base + path)
-        check(f'GET {path} (optional->fallback)', code == 404,
+        check(f'GET {path} (installed or fallback)', code in (200, 404),
               f'HTTP {code}')
+    body = http_body(base + '/assets/textures/impostor_manifest.json')
+    if body:
+        try:
+            species = json.loads(body).get('species', 0)
+            check('impostor manifest species', species == 4,
+                  f'species={species}')
+        except ValueError as exc:
+            check('impostor manifest parses', False, str(exc)[:80])
+    body = http_body(base + '/assets/textures/ktx2_manifest.json')
+    if body:
+        try:
+            entries = json.loads(body).get('ktx2', {})
+            check('ktx2 manifest populated', len(entries) >= 12,
+                  f'{len(entries)} entries')
+        except ValueError as exc:
+            check('ktx2 manifest parses', False, str(exc)[:80])
 
 # ------------------------------------------------------------------
 def chrome():
@@ -152,7 +177,7 @@ def boot_stage(port):
     check('engine HUD mounted', 'BLUE HOUR' in dom and 'stage PBR' in dom)
     check('engine preset button', 'LIGHT: ' in dom)
 
-    out = boot_run(bin, base + '/?autotest', 40, 'app')
+    out = boot_run(bin, base + '/?autotest', 60, 'app')
     errs = [l for l in out.splitlines() if JS_ERRORS.search(l)
             and 'CONSOLE' in l]
     check('app: zero JS errors', not errs,

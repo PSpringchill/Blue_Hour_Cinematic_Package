@@ -1,5 +1,11 @@
 {
-  "generated": "empty",
-  "note": "install_impostors.py writes species: 4 plus the atlas file when a scanned 4-cell atlas is installed; species 0 keeps the procedural impostor card.",
-  "species": 0
+  "file": "impostor_atlas.png",
+  "species": 4,
+  "width": 2048,
+  "height": 768,
+  "cellWidth": 512,
+  "sha256": "c97bdc46487a5c5d199e21b416452f25f91a976de89f9ddd67af15281d29cd59",
+  "license": "baked-in-house-fir-pack-fab",
+  "source": "impostor_atlas.png",
+  "imported": "2026-10-15T20:40:59+0700"
 }

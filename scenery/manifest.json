@@ -1,0 +1,36 @@
+{
+  "scenery": {
+    "rock": {
+      "file": "rock.glb",
+      "source": "rocks.glb",
+      "license": "extracted-in-house",
+      "triangles": 2774,
+      "sha256": "2cf897645b55d48600e4c383c52f5136cee24edb2885e7af346da8c72ebb26c3",
+      "installed": "2026-10-15T20:40:24+0700"
+    },
+    "fern": {
+      "file": "fern.glb",
+      "source": "_fern.glb",
+      "license": "extracted-in-house",
+      "triangles": 1240,
+      "sha256": "5b17002d5efa05a35bfb90a21c2ae2ff4c3568d3739fbac870fba42c387fabf7",
+      "installed": "2026-10-15T20:40:24+0700"
+    },
+    "stump": {
+      "file": "stump.glb",
+      "source": "_stump.glb",
+      "license": "extracted-in-house",
+      "triangles": 124,
+      "sha256": "532af4d5c0b26ef65a990f66c6eb5452e712fc9bccf67bbe110e2b93cc8d9b1c",
+      "installed": "2026-10-15T20:40:24+0700"
+    },
+    "shrub": {
+      "file": "shrub.glb",
+      "source": "_shrub.glb",
+      "license": "extracted-in-house",
+      "triangles": 8888,
+      "sha256": "509a4343b29883202bda94046b9fa021c9d180872807ff57e666bddbf6424d24",
+      "installed": "2026-10-15T20:40:24+0700"
+    }
+  }
+}

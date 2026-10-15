@@ -1,5 +1,138 @@
 {
   "generated": "empty",
   "note": "install_ktx2.py populates 'ktx2' when Basis-compressed textures are installed; an empty map means raster fallbacks are used.",
-  "ktx2": {}
+  "ktx2": {
+    "asphalt_02_diff_2k": {
+      "file": "assets/textures/asphalt_02_diff_2k.ktx2",
+      "source": "asphalt_02_diff_2k.ktx2",
+      "slot": "road",
+      "license": "PolyHaven-CC0-encoded-locally",
+      "size": "2048x2048",
+      "levels": 12,
+      "supercompression": "basis-lz",
+      "sha256": "8d243e0b5f64950aa9a1a0efc15cd114821a0d5ff4302f35f7b3d70fed9a45e0",
+      "installed": "2026-10-15T20:45:51+0700"
+    },
+    "asphalt_02_nor_gl_2k": {
+      "file": "assets/textures/asphalt_02_nor_gl_2k.ktx2",
+      "source": "asphalt_02_nor_gl_2k.ktx2",
+      "slot": "road",
+      "license": "PolyHaven-CC0-encoded-locally",
+      "size": "2048x2048",
+      "levels": 12,
+      "supercompression": "zstd",
+      "sha256": "1046485516c8f3ab6d0350cf9902d669205aea65db08befe64c077fc080769b8",
+      "installed": "2026-10-15T20:45:51+0700"
+    },
+    "asphalt_02_rough_2k": {
+      "file": "assets/textures/asphalt_02_rough_2k.ktx2",
+      "source": "asphalt_02_rough_2k.ktx2",
+      "slot": "road",
+      "license": "PolyHaven-CC0-encoded-locally",
+      "size": "2048x2048",
+      "levels": 12,
+      "supercompression": "basis-lz",
+      "sha256": "f7cde8b08dc3379522ff03888f0a731e41dedfb8b80a471d67aa9db5c604074d",
+      "installed": "2026-10-15T20:45:51+0700"
+    },
+    "forrest_ground_01_diff_2k": {
+      "file": "assets/textures/forrest_ground_01_diff_2k.ktx2",
+      "source": "forrest_ground_01_diff_2k.ktx2",
+      "slot": "ground",
+      "license": "PolyHaven-CC0-encoded-locally",
+      "size": "2048x2048",
+      "levels": 12,
+      "supercompression": "basis-lz",
+      "sha256": "37484b1c3c3dd16e594c27c2f6fa542acde3714d0fc128d66ec533075f9a816e",
+      "installed": "2026-10-15T20:45:51+0700"
+    },
+    "forrest_ground_01_nor_gl_2k": {
+      "file": "assets/textures/forrest_ground_01_nor_gl_2k.ktx2",
+      "source": "forrest_ground_01_nor_gl_2k.ktx2",
+      "slot": "ground",
+      "license": "PolyHaven-CC0-encoded-locally",
+      "size": "2048x2048",
+      "levels": 12,
+      "supercompression": "zstd",
+      "sha256": "378e66801b0d920259933ab5412f267d8fd52da2d88ad4ae55ba7ab2a3d18b01",
+      "installed": "2026-10-15T20:45:51+0700"
+    },
+    "forrest_ground_01_rough_2k": {
+      "file": "assets/textures/forrest_ground_01_rough_2k.ktx2",
+      "source": "forrest_ground_01_rough_2k.ktx2",
+      "slot": "ground",
+      "license": "PolyHaven-CC0-encoded-locally",
+      "size": "2048x2048",
+      "levels": 12,
+      "supercompression": "basis-lz",
+      "sha256": "18fce79a5d69a86c12a04c06430bda9bfa41c3a74e7c5402607749de73ec42e8",
+      "installed": "2026-10-15T20:45:51+0700"
+    },
+    "brown_mud_leaves_01_diff_2k": {
+      "file": "assets/textures/brown_mud_leaves_01_diff_2k.ktx2",
+      "source": "brown_mud_leaves_01_diff_2k.ktx2",
+      "slot": "verge",
+      "license": "PolyHaven-CC0-encoded-locally",
+      "size": "2048x2048",
+      "levels": 12,
+      "supercompression": "basis-lz",
+      "sha256": "30bc906ec7ef5af73fe8ed5c0f94fae44159b988b7100b713d4998233cdc26d9",
+      "installed": "2026-10-15T20:45:51+0700"
+    },
+    "brown_mud_leaves_01_nor_gl_2k": {
+      "file": "assets/textures/brown_mud_leaves_01_nor_gl_2k.ktx2",
+      "source": "brown_mud_leaves_01_nor_gl_2k.ktx2",
+      "slot": "verge",
+      "license": "PolyHaven-CC0-encoded-locally",
+      "size": "2048x2048",
+      "levels": 12,
+      "supercompression": "zstd",
+      "sha256": "35a25e917c0c851b3c3d803f1846534efe9d6810387b560c4705e052ef919205",
+      "installed": "2026-10-15T20:45:51+0700"
+    },
+    "brown_mud_leaves_01_rough_2k": {
+      "file": "assets/textures/brown_mud_leaves_01_rough_2k.ktx2",
+      "source": "brown_mud_leaves_01_rough_2k.ktx2",
+      "slot": "verge",
+      "license": "PolyHaven-CC0-encoded-locally",
+      "size": "2048x2048",
+      "levels": 12,
+      "supercompression": "basis-lz",
+      "sha256": "91c281bfdf2b93f456ab00b9c6be9d4e2512c7785e9f46978693c521510c07e5",
+      "installed": "2026-10-15T20:45:51+0700"
+    },
+    "ground_albedo": {
+      "file": "assets/terrain/ground_albedo.ktx2",
+      "source": "ground_albedo.ktx2",
+      "slot": "terrain",
+      "license": "PolyHaven-CC0-encoded-locally",
+      "size": "2048x2048",
+      "levels": 12,
+      "supercompression": "basis-lz",
+      "sha256": "5c9941ec08d422aeb13af4e5bddf3ca48c0f1843f20a20afc1add4a3bbdc99ed",
+      "installed": "2026-10-15T20:45:51+0700"
+    },
+    "ground_normal": {
+      "file": "assets/terrain/ground_normal.ktx2",
+      "source": "ground_normal.ktx2",
+      "slot": "terrain",
+      "license": "PolyHaven-CC0-encoded-locally",
+      "size": "2048x2048",
+      "levels": 12,
+      "supercompression": "zstd",
+      "sha256": "a57552a7817b07b97b0ffeeaec60e972dc5764b0e7dfc587e570ef2f90db6f7e",
+      "installed": "2026-10-15T20:45:51+0700"
+    },
+    "ground_ao": {
+      "file": "assets/terrain/ground_ao.ktx2",
+      "source": "ground_ao.ktx2",
+      "slot": "terrain",
+      "license": "PolyHaven-CC0-encoded-locally",
+      "size": "2048x2048",
+      "levels": 12,
+      "supercompression": "basis-lz",
+      "sha256": "b376a1a3af132d5dba74f1dc62d483a692ed54fedb07759830a8b7ce4c08cd0e",
+      "installed": "2026-10-15T20:45:51+0700"
+    }
+  }
 }
